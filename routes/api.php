@@ -74,7 +74,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // R1 Document
     Route::prefix('dokumen-r1')->group(function () {
         Route::get('/', [DokumenR1Controller::class, 'index']);
-        Route::post('/', [DokumenR1Controller::class, 'store']); // supervisor/admin only
+        Route::post('/', [DokumenR1Controller::class, 'store']); // manager/admin only
         Route::get('/{id}', [DokumenR1Controller::class, 'show']);
         Route::put('/{id}/status', [DokumenR1Controller::class, 'updateStatus']); // update status_dokumen
     });

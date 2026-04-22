@@ -34,8 +34,25 @@ class InboundController extends Controller
 
     public function scanQr(InboundRequest $request)
     {
-        $inbound = $this->inboundService->createInboundFromQr($request->qr_token, $request->validated(), $request->user());
-        return $this->success(new InboundResource($inbound), 'Inbound created from QR successfully', 201);
+        try {
+            $result = $this->inboundService->createInboundFromQr($request->qr_token, $request->validated(), $request->user());
+            
+            if ($result['completed']) {
+                return $this->success([
+                    'status' => 'arrived',
+                    'inbound' => new InboundResource($result['inbound']),
+                ], $result['message'], 200);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => $result['message'],
+                'progress' => $result['progress']
+            ], 200);
+
+        } catch (\Exception $e) {
+            return $this->error($e->getMessage(), 400);
+        }
     }
 
     public function show(Request $request, string $id)

@@ -13,7 +13,7 @@ return new class extends Migration
             $table->string('nama', 100);
             $table->string('email', 100)->unique();
             $table->string('password_hash', 255);
-            $table->enum('role', ['admin', 'petugas', 'supervisor', 'vendor']);
+            $table->enum('role', ['admin', 'petugas', 'manager', 'vendor']);
             $table->unsignedBigInteger('ID_vendor')->nullable();
             $table->timestamp('created_at')->useCurrent();
             $table->foreign('ID_vendor')->references('ID_vendor')->on('tabel_vendor')->nullOnDelete();

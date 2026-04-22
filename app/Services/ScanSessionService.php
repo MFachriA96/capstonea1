@@ -23,17 +23,28 @@ class ScanSessionService
         $this->discrepancyService = $discrepancyService;
     }
 
-    public function startSession(int $inboundId, int $barangId, User $user): ScanSession
+    public function startSession(int $inboundId, string $qrToken, User $user): ScanSession
     {
-        return DB::transaction(function () use ($inboundId, $barangId, $user) {
+        return DB::transaction(function () use ($inboundId, $qrToken, $user) {
             $inbound = Inbound::findOrFail($inboundId);
+
+            if ($inbound->total_qr_sudah_discan < $inbound->total_qr_expected) {
+                abort(400, 'Cannot start photo session until all QRs are scanned.');
+            }
+
+            $outboundDetail = \App\Models\OutboundDetail::where('qr_token', $qrToken)->firstOrFail();
             
+            if (!$outboundDetail->sudah_discan) {
+                abort(400, 'This specific box QR has not been scanned in the inbound process yet.');
+            }
+
             $existingSessionsCount = ScanSession::where('ID_inbound', $inboundId)->count();
             $urutanScan = $existingSessionsCount + 1;
 
             $session = ScanSession::create([
                 'ID_inbound' => $inboundId,
-                'ID_barang' => $barangId,
+                'ID_barang' => $outboundDetail->ID_barang,
+                'ID_outbound_detail' => $outboundDetail->ID_outbound_detail,
                 'urutan_scan' => $urutanScan,
                 'waktu_mulai' => now(),
                 'status_sesi' => 'berlangsung',
@@ -76,7 +87,7 @@ class ScanSessionService
             ]);
 
             $inboundDetail = InboundDetail::where('ID_inbound', $session->ID_inbound)
-                ->where('ID_barang', $session->ID_barang)
+                ->where('ID_outbound_detail', $session->ID_outbound_detail)
                 ->first();
 
             if ($inboundDetail) {
@@ -114,7 +125,7 @@ class ScanSessionService
         });
     }
 
-    public function updateInboundDetail(int $sessionId, int $barangId, int $quantityInbound): InboundDetail
+    public function updateInboundDetail(int $sessionId, int $quantityInbound): InboundDetail
     {
         $session = ScanSession::findOrFail($sessionId);
         $inbound = Inbound::findOrFail($session->ID_inbound);
@@ -124,7 +135,7 @@ class ScanSessionService
         }
 
         $detail = InboundDetail::where('ID_inbound', $inbound->ID_inbound)
-            ->where('ID_barang', $barangId)
+            ->where('ID_outbound_detail', $session->ID_outbound_detail)
             ->firstOrFail();
 
         $detail->update(['quantity_inbound' => $quantityInbound]);

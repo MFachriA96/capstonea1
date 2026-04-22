@@ -19,14 +19,13 @@ class DiscrepancyService
     public function generateDiscrepancies(int $inboundId): void
     {
         DB::transaction(function () use ($inboundId) {
-            $inbound = Inbound::with(['details', 'outbound.details'])->findOrFail($inboundId);
+            $inbound = Inbound::with(['details.outboundDetail', 'outbound'])->findOrFail($inboundId);
 
             foreach ($inbound->details as $inboundDetail) {
-                // Find matching outbound detail
-                $outboundDetail = $inbound->outbound->details->firstWhere('ID_barang', $inboundDetail->ID_barang);
+                $outboundDetail = $inboundDetail->outboundDetail;
 
                 if (!$outboundDetail) {
-                    continue; // Skip if no matching outbound detail (shouldn't happen in normal flow)
+                    continue;
                 }
 
                 $quantityInbound = $inboundDetail->quantity_inbound !== null ? $inboundDetail->quantity_inbound : $inboundDetail->quantity_cv_detect;
@@ -56,11 +55,11 @@ class DiscrepancyService
 
             $inbound->outbound->update(['status' => 'verified']);
 
-            // Notify supervisor and vendor
-            $supervisors = User::where('role', 'supervisor')->get();
-            foreach ($supervisors as $supervisor) {
+            // Notify manager and vendor
+            $managers = User::where('role', 'manager')->get();
+            foreach ($managers as $manager) {
                 $this->notificationService->send(
-                    $supervisor->ID_user,
+                    $manager->ID_user,
                     'Discrepancy Generated',
                     'Discrepancy report untuk pengiriman ' . $inbound->outbound->no_pengiriman . ' telah dibuat.',
                     'outbound',

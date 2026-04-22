@@ -12,6 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tabel_outbound', function (Blueprint $table) {
+            $table->dropUnique(['qr_token']);
             $table->dropColumn('qr_token');
         });
 
@@ -26,6 +27,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('tabel_outbound_detail', function (Blueprint $table) {
+            $table->dropUnique(['qr_token']);
             $table->dropColumn('qr_token');
         });
 

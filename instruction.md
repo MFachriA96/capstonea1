@@ -51,7 +51,7 @@ Start
 | nama | VARCHAR(100) | — |
 | email | VARCHAR(100), UNIQUE | — |
 | password_hash | VARCHAR(255) | — |
-| role | ENUM('admin', 'petugas', 'supervisor', 'vendor') | Vendor has account for live monitoring |
+| role | ENUM('admin', 'petugas', 'manager', 'vendor') | Vendor has account for live monitoring |
 | ID_vendor | INT, FK → tabel_vendor, NULLABLE | Filled only if role = vendor |
 | created_at | TIMESTAMP | — |
 
@@ -254,7 +254,7 @@ Total tables: **14**
 
 | Table | Purpose |
 |---|---|
-| tabel_user | System users (admin, petugas, supervisor, vendor) |
+| tabel_user | System users (admin, petugas, manager, vendor) |
 | tabel_vendor | Vendor master data |
 | tabel_barang | Part/item master data |
 | tabel_gudang | Warehouse/area master data |

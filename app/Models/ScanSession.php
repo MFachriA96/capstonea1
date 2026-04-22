@@ -13,7 +13,7 @@ class ScanSession extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'ID_inbound', 'ID_barang', 'urutan_scan', 'waktu_mulai', 'waktu_selesai',
+        'ID_inbound', 'ID_barang', 'ID_outbound_detail', 'urutan_scan', 'waktu_mulai', 'waktu_selesai',
         'status_sesi', 'ID_user',
     ];
 
@@ -30,6 +30,11 @@ class ScanSession extends Model
     public function barang()
     {
         return $this->belongsTo(Barang::class, 'ID_barang', 'ID_barang');
+    }
+
+    public function outboundDetail()
+    {
+        return $this->belongsTo(OutboundDetail::class, 'ID_outbound_detail', 'ID_outbound_detail');
     }
 
     public function user()

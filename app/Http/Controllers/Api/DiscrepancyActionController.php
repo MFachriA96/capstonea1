@@ -39,11 +39,11 @@ class DiscrepancyActionController extends Controller
             'status_action' => 'done',
         ]);
 
-        // Notify supervisor
-        $supervisors = \App\Models\User::where('role', 'supervisor')->get();
-        foreach ($supervisors as $supervisor) {
+        // Notify manager
+        $managers = \App\Models\User::where('role', 'manager')->get();
+        foreach ($managers as $manager) {
             $this->notificationService->send(
-                $supervisor->ID_user,
+                $manager->ID_user,
                 'Discrepancy Action Taken',
                 'Aksi [' . $action->action_type . '] diambil untuk discrepancy ID ' . $discrepancyId . ' oleh ' . $request->user()->nama,
                 'discrepancy',

@@ -30,7 +30,7 @@ class ScanSessionController extends Controller
 
     public function store(ScanSessionRequest $request)
     {
-        $session = $this->scanSessionService->startSession($request->ID_inbound, $request->ID_barang, $request->user());
+        $session = $this->scanSessionService->startSession($request->ID_inbound, $request->qr_token, $request->user());
         return $this->success(new ScanSessionResource($session), 'Scan session started', 201);
     }
 
@@ -59,11 +59,10 @@ class ScanSessionController extends Controller
     public function updateInboundDetail(Request $request, string $id)
     {
         $request->validate([
-            'ID_barang' => 'required|integer|exists:tabel_barang,ID_barang',
             'quantity_inbound' => 'required|integer|min:0',
         ]);
 
-        $detail = $this->scanSessionService->updateInboundDetail($id, $request->ID_barang, $request->quantity_inbound);
+        $detail = $this->scanSessionService->updateInboundDetail($id, $request->quantity_inbound);
         return $this->success(new InboundDetailResource($detail), 'Inbound detail updated');
     }
 }
