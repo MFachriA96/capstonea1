@@ -44,7 +44,7 @@ class CVService
         }
 
         return [
-            'jumlah_terdeteksi' => null,
+            'jumlah_terdeteksi' => 0,
             'cacat_terdeteksi' => false,
             'confidence_score' => 0.0,
             'model_version' => 'unknown',

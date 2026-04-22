@@ -13,7 +13,7 @@ class InboundDetail extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'ID_inbound', 'ID_barang', 'quantity_cv_detect', 'quantity_inbound', 'ada_cacat', 'catatan_cacat',
+        'ID_inbound', 'ID_barang', 'ID_outbound_detail', 'quantity_cv_detect', 'quantity_inbound', 'ada_cacat', 'catatan_cacat',
     ];
 
     protected $casts = [
@@ -28,6 +28,11 @@ class InboundDetail extends Model
     public function barang()
     {
         return $this->belongsTo(Barang::class, 'ID_barang', 'ID_barang');
+    }
+
+    public function outboundDetail()
+    {
+        return $this->belongsTo(OutboundDetail::class, 'ID_outbound_detail', 'ID_outbound_detail');
     }
 
     public function discrepancies()

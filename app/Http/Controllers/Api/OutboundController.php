@@ -61,20 +61,9 @@ class OutboundController extends Controller
             abort(403, 'Unauthorized');
         }
 
-        // Simplification for update: deleting all details and recreating them
-        $outbound->update($request->only('ID_vendor', 'waktu_kirim', 'estimasi_tiba', 'lokasi_asal'));
-        
-        $outbound->details()->delete();
-        foreach ($request->details as $detail) {
-            $outbound->details()->create([
-                'ID_barang' => $detail['ID_barang'],
-                'quantity_outbound' => $detail['quantity_outbound'],
-                'quantity_per_box' => $detail['quantity_per_box'],
-                'jumlah_box' => $detail['jumlah_box'],
-            ]);
-        }
+        $outbound = $this->outboundService->updateOutbound($outbound, $request->validated(), $request->user());
 
-        return $this->success(new OutboundResource($outbound->load('details')), 'Outbound updated successfully');
+        return $this->success(new OutboundResource($outbound), 'Outbound updated successfully');
     }
 
     public function destroy(Request $request, string $id)

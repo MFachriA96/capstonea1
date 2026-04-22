@@ -15,7 +15,8 @@ class Inbound extends Model
     protected $fillable = [
         'ID_outbound', 'ID_gudang', 'ID_vendor', 'timestamp_terima', 'nama_penerima',
         'diterima_oleh', 'qr_scan_result', 'lokasi_terakhir', 'total_box_expected',
-        'total_box_sudah_discan', 'status_scan', 'created_at',
+        'total_box_sudah_discan', 'total_qr_expected', 'total_qr_sudah_discan',
+        'status_scan', 'created_at',
     ];
 
     protected $casts = [

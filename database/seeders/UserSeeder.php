@@ -13,7 +13,7 @@ class UserSeeder extends Seeder
     {
         // Spatie Rolls
         Role::firstOrCreate(['name' => 'admin']);
-        Role::firstOrCreate(['name' => 'supervisor']);
+        Role::firstOrCreate(['name' => 'manager']);
         Role::firstOrCreate(['name' => 'petugas']);
         Role::firstOrCreate(['name' => 'vendor']);
 
@@ -25,13 +25,13 @@ class UserSeeder extends Seeder
         ]);
         $admin->assignRole('admin');
 
-        $supervisor = User::create([
-            'nama' => 'Supervisor Penerimaan',
+        $manager = User::create([
+            'nama' => 'Manager',
             'email' => 'spv@epson.com',
             'password_hash' => Hash::make('password123'),
-            'role' => 'supervisor',
+            'role' => 'manager',
         ]);
-        $supervisor->assignRole('supervisor');
+        $manager->assignRole('manager');
 
         $petugas = User::create([
             'nama' => 'Petugas Scan',

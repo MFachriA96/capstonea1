@@ -14,6 +14,12 @@ class OutboundDetail extends Model
 
     protected $fillable = [
         'ID_outbound', 'ID_barang', 'quantity_outbound', 'quantity_per_box', 'jumlah_box', 'qr_token',
+        'sudah_discan', 'waktu_discan', 'discan_oleh',
+    ];
+
+    protected $casts = [
+        'sudah_discan' => 'boolean',
+        'waktu_discan' => 'datetime',
     ];
 
     public function outbound()
@@ -29,5 +35,10 @@ class OutboundDetail extends Model
     public function discrepancies()
     {
         return $this->hasMany(Discrepancy::class, 'ID_outbound_detail', 'ID_outbound_detail');
+    }
+
+    public function scanner()
+    {
+        return $this->belongsTo(User::class, 'discan_oleh', 'ID_user');
     }
 }

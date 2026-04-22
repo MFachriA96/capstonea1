@@ -15,7 +15,7 @@ class ScanSessionRequest extends FormRequest
     {
         return [
             'ID_inbound' => ['required', 'integer', 'exists:tabel_inbound,ID_inbound'],
-            'ID_barang' => ['required', 'integer', 'exists:tabel_barang,ID_barang'],
+            'qr_token' => ['required', 'string', 'exists:tabel_outbound_detail,qr_token'],
         ];
     }
 }
