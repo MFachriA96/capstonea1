@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Barang;
+use App\Models\Discrepancy;
+use App\Models\Foto;
 use App\Models\Gudang;
 use App\Models\Inbound;
 use App\Models\InboundDetail;
@@ -13,10 +15,13 @@ use App\Models\Vendor;
 use App\Services\CVService;
 use App\Services\DiscrepancyService;
 use App\Services\InboundService;
+use App\Services\ManualVerificationService;
 use App\Services\NotificationService;
 use App\Services\OutboundService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -243,6 +248,184 @@ class CriticalFlowFixesTest extends TestCase
         $this->assertDatabaseHas('tabel_inbound', [
             'ID_outbound' => $outbound->ID_outbound,
             'status_scan' => 'menunggu',
+        ]);
+    }
+
+    public function test_manual_verification_finalizes_inbound_and_generates_discrepancies_without_cv(): void
+    {
+        $vendor = Vendor::create([
+            'nama_vendor' => 'Vendor A',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '08123456789',
+            'email_vendor' => 'vendor@example.com',
+            'aktif' => true,
+        ]);
+
+        $officer = User::create([
+            'nama' => 'Officer',
+            'email' => 'manual-officer@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'petugas',
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'P-002',
+            'part_name' => 'Panel X1',
+            'nama_barang' => 'Panel X1',
+            'satuan' => 'pcs',
+        ]);
+
+        $gudang = Gudang::create([
+            'nama_gudang' => 'Gudang B',
+            'lokasi_gudang' => 'Gedung B',
+            'kode_area' => 'B1',
+        ]);
+
+        $outbound = Outbound::create([
+            'no_pengiriman' => 'DO-20260422-0003',
+            'ID_vendor' => $vendor->ID_vendor,
+            'waktu_kirim' => now(),
+            'lokasi_asal' => 'Vendor Warehouse',
+            'status' => 'submitted',
+            'dibuat_oleh' => $officer->ID_user,
+        ]);
+
+        $outboundDetail = OutboundDetail::create([
+            'ID_outbound' => $outbound->ID_outbound,
+            'ID_barang' => $barang->ID_barang,
+            'quantity_outbound' => 12,
+            'quantity_per_box' => 12,
+            'jumlah_box' => 1,
+            'qr_token' => 'manual-qr-1',
+        ]);
+
+        $inboundService = new InboundService(new NotificationService());
+        $result = $inboundService->createInboundFromQr('manual-qr-1', [
+            'ID_gudang' => $gudang->ID_gudang,
+            'nama_penerima' => 'Budi',
+            'lokasi_terakhir' => 'Dock',
+        ], $officer);
+
+        $inbound = $result['inbound'];
+        $detail = InboundDetail::where('ID_inbound', $inbound->ID_inbound)
+            ->where('ID_outbound_detail', $outboundDetail->ID_outbound_detail)
+            ->firstOrFail();
+
+        $service = new ManualVerificationService(new DiscrepancyService(new NotificationService()));
+        $service->updateDetail($inbound->ID_inbound, $detail->ID_inbound_detail, [
+            'quantity_inbound' => 9,
+            'ada_cacat' => true,
+            'catatan_cacat' => 'Kemasan penyok',
+        ]);
+
+        $service->finalize($inbound->ID_inbound);
+        $service->finalize($inbound->ID_inbound);
+
+        $this->assertDatabaseHas('tabel_inbound', [
+            'ID_inbound' => $inbound->ID_inbound,
+            'status_scan' => 'selesai',
+            'total_box_sudah_discan' => 1,
+        ]);
+
+        $this->assertDatabaseHas('tabel_discrepancy', [
+            'ID_outbound_detail' => $outboundDetail->ID_outbound_detail,
+            'quantity_outbound' => 12,
+            'quantity_inbound' => 9,
+            'status' => 'mismatch',
+        ]);
+
+        $this->assertSame(1, Discrepancy::where('ID_inbound_detail', $detail->ID_inbound_detail)->count());
+    }
+
+    public function test_manual_condition_photo_upload_stores_audit_photo_without_cv_result(): void
+    {
+        Storage::fake('public');
+        config(['filesystems.manual_verification_disk' => 'public']);
+
+        $vendor = Vendor::create([
+            'nama_vendor' => 'Vendor A',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '08123456789',
+            'email_vendor' => 'vendor@example.com',
+            'aktif' => true,
+        ]);
+
+        $officer = User::create([
+            'nama' => 'Officer',
+            'email' => 'photo-officer@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'petugas',
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'P-003',
+            'part_name' => 'Cover X1',
+            'nama_barang' => 'Cover X1',
+            'satuan' => 'pcs',
+        ]);
+
+        $gudang = Gudang::create([
+            'nama_gudang' => 'Gudang C',
+            'lokasi_gudang' => 'Gedung C',
+            'kode_area' => 'C1',
+        ]);
+
+        $outbound = Outbound::create([
+            'no_pengiriman' => 'DO-20260422-0004',
+            'ID_vendor' => $vendor->ID_vendor,
+            'waktu_kirim' => now(),
+            'lokasi_asal' => 'Vendor Warehouse',
+            'status' => 'arrived',
+            'dibuat_oleh' => $officer->ID_user,
+        ]);
+
+        $outboundDetail = OutboundDetail::create([
+            'ID_outbound' => $outbound->ID_outbound,
+            'ID_barang' => $barang->ID_barang,
+            'quantity_outbound' => 5,
+            'quantity_per_box' => 5,
+            'jumlah_box' => 1,
+            'qr_token' => 'manual-qr-photo',
+            'sudah_discan' => true,
+            'discan_oleh' => $officer->ID_user,
+        ]);
+
+        $inbound = Inbound::create([
+            'ID_outbound' => $outbound->ID_outbound,
+            'ID_gudang' => $gudang->ID_gudang,
+            'ID_vendor' => $vendor->ID_vendor,
+            'timestamp_terima' => now(),
+            'nama_penerima' => 'Officer',
+            'diterima_oleh' => $officer->ID_user,
+            'qr_scan_result' => 'manual-qr-photo',
+            'lokasi_terakhir' => 'Dock',
+            'total_box_expected' => 1,
+            'total_box_sudah_discan' => 0,
+            'total_qr_expected' => 1,
+            'total_qr_sudah_discan' => 1,
+            'status_scan' => 'menunggu',
+        ]);
+
+        $detail = InboundDetail::create([
+            'ID_inbound' => $inbound->ID_inbound,
+            'ID_barang' => $barang->ID_barang,
+            'ID_outbound_detail' => $outboundDetail->ID_outbound_detail,
+            'quantity_inbound' => 5,
+            'ada_cacat' => false,
+        ]);
+
+        $service = new ManualVerificationService(new DiscrepancyService(new NotificationService()));
+        $foto = $service->uploadConditionPhoto(
+            $inbound->ID_inbound,
+            $detail->ID_inbound_detail,
+            UploadedFile::fake()->create('condition.jpg', 100, 'image/jpeg'),
+            $officer
+        );
+
+        $this->assertSame('manual_condition', $foto->related_type);
+        $this->assertSame(1, Foto::where('ID_inbound', $inbound->ID_inbound)->count());
+        $this->assertDatabaseMissing('tabel_cv_result', [
+            'ID_foto' => $foto->ID_foto,
         ]);
     }
 

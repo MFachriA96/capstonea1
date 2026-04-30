@@ -57,7 +57,7 @@ class InboundController extends Controller
 
     public function show(Request $request, string $id)
     {
-        $inbound = Inbound::with(['outbound', 'gudang', 'vendor', 'penerima', 'details.barang', 'scanSessions'])->findOrFail($id);
+        $inbound = Inbound::with(['outbound', 'gudang', 'vendor', 'penerima', 'details.barang', 'details.auditPhotos', 'scanSessions'])->findOrFail($id);
 
         if ($request->user()->role === 'vendor' && $inbound->ID_vendor !== $request->user()->ID_vendor) {
             abort(403, 'Unauthorized');
@@ -85,6 +85,8 @@ class InboundController extends Controller
         return $this->success([
             'total_box_expected' => $inbound->total_box_expected,
             'total_box_sudah_discan' => $inbound->total_box_sudah_discan,
+            'total_qr_expected' => $inbound->total_qr_expected,
+            'total_qr_sudah_discan' => $inbound->total_qr_sudah_discan,
             'status_scan' => $inbound->status_scan,
         ]);
     }

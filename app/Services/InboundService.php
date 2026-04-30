@@ -77,7 +77,7 @@ class InboundService
 
             if ($inbound->total_qr_sudah_discan >= $inbound->total_qr_expected) {
                 $outbound->update(['status' => 'arrived']);
-                $inbound->update(['status_scan' => 'menunggu']); // Ready for CV
+                $inbound->update(['status_scan' => 'menunggu']); // Ready for manual verification
 
                 // Notify manager
                 $managers = User::where('role', 'manager')->get();
@@ -94,7 +94,7 @@ class InboundService
                 return [
                     'completed' => true,
                     'inbound' => $inbound->load(['outbound', 'details']),
-                    'message' => 'All QRs scanned. Shipment arrived. Proceed to photo scan.',
+                    'message' => 'All QRs scanned. Shipment arrived. Proceed to manual verification.',
                 ];
             }
 

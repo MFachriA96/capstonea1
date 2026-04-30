@@ -7,8 +7,10 @@ use App\Http\Controllers\Api\DiscrepancyController;
 use App\Http\Controllers\Api\DokumenR1Controller;
 use App\Http\Controllers\Api\FotoController;
 use App\Http\Controllers\Api\InboundController;
+use App\Http\Controllers\Api\ManualVerificationController;
 use App\Http\Controllers\Api\Master\BarangController;
 use App\Http\Controllers\Api\Master\GudangController;
+use App\Http\Controllers\Api\Master\UserController;
 use App\Http\Controllers\Api\Master\VendorController;
 use App\Http\Controllers\Api\NotifikasiController;
 use App\Http\Controllers\Api\OutboundController;
@@ -31,6 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('barang', BarangController::class);
         Route::apiResource('vendor', VendorController::class);
         Route::apiResource('gudang', GudangController::class);
+        Route::get('user', [UserController::class, 'index']);
     });
 
     // Outbound
@@ -51,6 +54,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}', [InboundController::class, 'show']);
         Route::put('/{id}', [InboundController::class, 'update']); // update lokasi_terakhir, nama_penerima
         Route::get('/{id}/progress', [InboundController::class, 'progress']); // scan progress
+        Route::put('/{id}/manual-verification/{detailId}', [ManualVerificationController::class, 'updateDetail']);
+        Route::post('/{id}/manual-verification/{detailId}/photo', [ManualVerificationController::class, 'uploadPhoto']);
+        Route::post('/{id}/manual-verification/finalize', [ManualVerificationController::class, 'finalize']);
     });
 
     // Scan Session

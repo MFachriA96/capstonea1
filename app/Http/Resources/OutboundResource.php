@@ -19,6 +19,19 @@ class OutboundResource extends JsonResource
             'status' => $this->status,
             'dibuat_oleh' => $this->dibuat_oleh,
             'created_at' => $this->created_at,
+            'vendor' => $this->whenLoaded('vendor', function () {
+                return [
+                    'ID_vendor' => $this->vendor->ID_vendor,
+                    'nama_vendor' => $this->vendor->nama_vendor,
+                ];
+            }),
+            'creator' => $this->whenLoaded('pembuatOutbound', function () {
+                return [
+                    'ID_user' => $this->pembuatOutbound->ID_user,
+                    'nama' => $this->pembuatOutbound->nama,
+                    'email' => $this->pembuatOutbound->email,
+                ];
+            }),
             'details' => OutboundDetailResource::collection($this->whenLoaded('details')),
         ];
     }

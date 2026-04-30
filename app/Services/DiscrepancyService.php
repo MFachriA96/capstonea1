@@ -28,7 +28,9 @@ class DiscrepancyService
                     continue;
                 }
 
-                $quantityInbound = $inboundDetail->quantity_inbound !== null ? $inboundDetail->quantity_inbound : $inboundDetail->quantity_cv_detect;
+                $quantityInbound = $inboundDetail->quantity_inbound !== null
+                    ? $inboundDetail->quantity_inbound
+                    : ($inboundDetail->quantity_cv_detect ?? 0);
                 $quantityOutbound = $outboundDetail->quantity_outbound;
 
                 $selisih = $quantityInbound - $quantityOutbound;
@@ -43,14 +45,19 @@ class DiscrepancyService
                     $status = 'mismatch';
                 }
 
-                Discrepancy::create([
-                    'ID_outbound_detail' => $outboundDetail->ID_outbound_detail,
-                    'ID_inbound_detail' => $inboundDetail->ID_inbound_detail,
-                    'quantity_outbound' => $quantityOutbound,
-                    'quantity_inbound' => $quantityInbound,
-                    'selisih' => $selisih,
-                    'status' => $status,
-                ]);
+                Discrepancy::updateOrCreate(
+                    [
+                        'ID_outbound_detail' => $outboundDetail->ID_outbound_detail,
+                        'ID_inbound_detail' => $inboundDetail->ID_inbound_detail,
+                    ],
+                    [
+                        'quantity_outbound' => $quantityOutbound,
+                        'quantity_inbound' => $quantityInbound,
+                        'selisih' => $selisih,
+                        'status' => $status,
+                        'detected_at' => now(),
+                    ]
+                );
             }
 
             $inbound->outbound->update(['status' => 'verified']);

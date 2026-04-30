@@ -17,6 +17,13 @@ class DokumenR1Resource extends JsonResource
             'dibuat_oleh' => $this->dibuat_oleh,
             'dibuat_at' => $this->dibuat_at,
             'keterangan' => $this->keterangan,
+            'pembuat' => $this->whenLoaded('pembuat', function () {
+                return [
+                    'ID_user' => $this->pembuat->ID_user,
+                    'nama' => $this->pembuat->nama,
+                    'email' => $this->pembuat->email,
+                ];
+            }),
         ];
     }
 }

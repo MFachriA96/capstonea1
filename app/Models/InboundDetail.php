@@ -39,4 +39,16 @@ class InboundDetail extends Model
     {
         return $this->hasMany(Discrepancy::class, 'ID_inbound_detail', 'ID_inbound_detail');
     }
+
+    public function auditPhotos()
+    {
+        return $this->hasManyThrough(
+            Foto::class,
+            ScanSession::class,
+            'ID_outbound_detail',
+            'ID_session',
+            'ID_outbound_detail',
+            'ID_session'
+        )->where('related_type', 'manual_condition');
+    }
 }
