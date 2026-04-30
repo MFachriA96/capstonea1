@@ -14,7 +14,7 @@ class DiscrepancyController extends Controller
 
     public function index(Request $request)
     {
-        $query = Discrepancy::with(['outboundDetail.barang', 'inboundDetail', 'actions']);
+        $query = Discrepancy::with(['outboundDetail.barang', 'inboundDetail.auditPhotos', 'actions']);
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -31,7 +31,7 @@ class DiscrepancyController extends Controller
 
     public function show(Request $request, string $id)
     {
-        $discrepancy = Discrepancy::with(['outboundDetail.barang', 'outboundDetail.outbound', 'inboundDetail', 'actions', 'dokumenR1'])->findOrFail($id);
+        $discrepancy = Discrepancy::with(['outboundDetail.barang', 'outboundDetail.outbound', 'inboundDetail.auditPhotos', 'actions', 'dokumenR1'])->findOrFail($id);
 
         if ($request->user()->role === 'vendor' && $discrepancy->outboundDetail->outbound->ID_vendor !== $request->user()->ID_vendor) {
             abort(403, 'Unauthorized');

@@ -23,6 +23,19 @@ class InboundResource extends JsonResource
             'total_box_sudah_discan' => $this->total_box_sudah_discan,
             'status_scan' => $this->status_scan,
             'created_at' => $this->created_at,
+            'vendor' => $this->whenLoaded('vendor', function () {
+                return [
+                    'ID_vendor' => $this->vendor->ID_vendor,
+                    'nama_vendor' => $this->vendor->nama_vendor,
+                ];
+            }),
+            'receiver' => $this->whenLoaded('penerima', function () {
+                return [
+                    'ID_user' => $this->penerima->ID_user,
+                    'nama' => $this->penerima->nama,
+                    'email' => $this->penerima->email,
+                ];
+            }),
             'details' => InboundDetailResource::collection($this->whenLoaded('details')),
         ];
     }

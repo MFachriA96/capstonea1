@@ -16,6 +16,13 @@ class UserResource extends JsonResource
             'role' => $this->role,
             'ID_vendor' => $this->ID_vendor,
             'created_at' => $this->created_at,
+            'vendor' => $this->whenLoaded('vendor', function () {
+                return [
+                    'ID_vendor' => $this->vendor->ID_vendor,
+                    'nama_vendor' => $this->vendor->nama_vendor,
+                    'aktif' => $this->vendor->aktif,
+                ];
+            }),
         ];
     }
 }

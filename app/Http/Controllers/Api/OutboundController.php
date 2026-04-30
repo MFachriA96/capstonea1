@@ -9,6 +9,7 @@ use App\Models\Outbound;
 use App\Services\OutboundService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class OutboundController extends Controller
 {
@@ -94,6 +95,20 @@ class OutboundController extends Controller
 
         if ($request->user()->role === 'vendor' && $outbound->ID_vendor !== $request->user()->ID_vendor) {
             abort(403, 'Unauthorized');
+        }
+
+        // Backfill missing QR tokens for previously submitted records so older data
+        // can still be used in the current QR-per-box flow.
+        if ($outbound->status !== 'draft') {
+            foreach ($outbound->details as $detail) {
+                if (empty($detail->qr_token)) {
+                    $detail->update([
+                        'qr_token' => Str::uuid()->toString(),
+                    ]);
+                }
+            }
+
+            $outbound->load('details');
         }
 
         $qrTokens = $outbound->details->map(function ($detail) {

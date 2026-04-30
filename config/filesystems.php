@@ -15,6 +15,8 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'local'),
 
+    'manual_verification_disk' => env('MANUAL_VERIFICATION_PHOTO_DISK', env('FILESYSTEM_DISK', 'public')),
+
     /*
     |--------------------------------------------------------------------------
     | Filesystem Disks
