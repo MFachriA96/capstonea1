@@ -19,13 +19,15 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [
+    'allowed_origins' => array_filter(array_map('trim', explode(',', env('FRONTEND_URLS', implode(',', [
         'http://localhost:3000',
         'http://localhost:5173',
-        'https://your-react-domain.com',
-    ],
+        'https://frontendct-6lj91s9ky-mfachria96s-projects.vercel.app',
+    ]))))),
 
-    'allowed_origins_patterns' => [],
+    'allowed_origins_patterns' => [
+        '#^https://frontendct-[a-z0-9-]+-mfachria96s-projects\.vercel\.app$#',
+    ],
 
     'allowed_headers' => ['*'],
 
