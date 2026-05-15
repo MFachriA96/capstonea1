@@ -14,7 +14,13 @@ class DiscrepancyController extends Controller
 
     public function index(Request $request)
     {
-        $query = Discrepancy::with(['outboundDetail.barang', 'inboundDetail.auditPhotos', 'actions']);
+        $query = Discrepancy::with([
+            'outboundDetail.barang',
+            'outboundDetail.outbound.vendor',
+            'inboundDetail.auditPhotos',
+            'actions',
+            'dokumenR1',
+        ]);
 
         if ($request->has('status')) {
             $query->where('status', $request->status);

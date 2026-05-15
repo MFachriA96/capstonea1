@@ -81,19 +81,24 @@ class DashboardController extends Controller
 
     public function vendorPerformance()
     {
-        $vendors = Vendor::all();
+        $vendors = Vendor::all()->groupBy(function ($vendor) {
+            return strtolower(trim($vendor->email_vendor ?: $vendor->nama_vendor));
+        });
         $performance = [];
 
-        foreach ($vendors as $vendor) {
-            $totalOutbounds = Outbound::where('ID_vendor', $vendor->ID_vendor)->count();
+        foreach ($vendors as $vendorGroup) {
+            $vendor = $vendorGroup->first();
+            $vendorIds = $vendorGroup->pluck('ID_vendor');
+            $totalOutbounds = Outbound::whereIn('ID_vendor', $vendorIds)->count();
             
-            $totalDiscrepancies = Discrepancy::whereHas('outboundDetail.outbound', function ($q) use ($vendor) {
-                $q->where('ID_vendor', $vendor->ID_vendor);
+            $totalDiscrepancies = Discrepancy::whereHas('outboundDetail.outbound', function ($q) use ($vendorIds) {
+                $q->whereIn('ID_vendor', $vendorIds);
             })->count();
 
             $rate = $totalOutbounds > 0 ? round(($totalDiscrepancies / $totalOutbounds) * 100, 1) : 0;
 
             $performance[] = [
+                'vendor_ids' => $vendorIds->values(),
                 'vendor' => $vendor->nama_vendor,
                 'total_shipments' => $totalOutbounds,
                 'total_discrepancies' => $totalDiscrepancies,
