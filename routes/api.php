@@ -27,6 +27,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Auth
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::get('/barang/options', [BarangController::class, 'options']);
 
     // Master Data (admin only)
     Route::middleware('role:admin')->prefix('master')->group(function () {
