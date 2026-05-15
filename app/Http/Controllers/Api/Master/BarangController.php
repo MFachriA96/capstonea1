@@ -16,6 +16,16 @@ class BarangController extends Controller
         return $this->success(Barang::paginate(15));
     }
 
+    public function options()
+    {
+        return $this->success(
+            Barang::query()
+                ->select('ID_barang', 'part_code', 'part_name', 'nama_barang', 'satuan')
+                ->orderBy('nama_barang')
+                ->get()
+        );
+    }
+
     public function store(Request $request)
     {
         $request->validate([
