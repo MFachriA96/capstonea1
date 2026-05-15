@@ -9,7 +9,7 @@ class VendorSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('tabel_vendor')->insert([
+        DB::table('tabel_vendor')->upsert([
             [
                 'nama_vendor' => 'PT Vendor A Makmur',
                 'lokasi_vendor' => 'Kawasan Industri MM2100, Bekasi',
@@ -24,6 +24,11 @@ class VendorSeeder extends Seeder
                 'email_vendor' => 'info@vendorb.co.id',
                 'aktif' => true,
             ]
+        ], ['email_vendor'], [
+            'nama_vendor',
+            'lokasi_vendor',
+            'kontak',
+            'aktif',
         ]);
     }
 }

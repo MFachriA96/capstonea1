@@ -23,7 +23,11 @@ class DokumenR1Controller extends Controller
 
     public function index(Request $request)
     {
-        $query = DokumenR1::with(['discrepancy.outboundDetail.outbound', 'pembuat']);
+        $query = DokumenR1::with([
+            'discrepancy.outboundDetail.barang',
+            'discrepancy.outboundDetail.outbound.vendor',
+            'pembuat',
+        ]);
 
         if ($request->user()->role === 'vendor') {
             $query->whereHas('discrepancy.outboundDetail.outbound', function ($q) use ($request) {
@@ -31,7 +35,7 @@ class DokumenR1Controller extends Controller
             });
         }
 
-        return $this->success(DokumenR1Resource::collection($query->paginate(15))->response()->getData(true));
+        return $this->success(DokumenR1Resource::collection($query->orderByDesc('ID_dokumen')->paginate(15))->response()->getData(true));
     }
 
     public function store(DokumenR1Request $request)
@@ -46,12 +50,20 @@ class DokumenR1Controller extends Controller
             'keterangan' => $request->keterangan,
         ]);
 
-        return $this->success(new DokumenR1Resource($dokumen), 'R1 Document created', 201);
+        return $this->success(new DokumenR1Resource($dokumen->load([
+            'discrepancy.outboundDetail.barang',
+            'discrepancy.outboundDetail.outbound.vendor',
+            'pembuat',
+        ])), 'R1 Document created', 201);
     }
 
     public function show(Request $request, string $id)
     {
-        $dokumen = DokumenR1::with(['discrepancy.outboundDetail.outbound', 'pembuat'])->findOrFail($id);
+        $dokumen = DokumenR1::with([
+            'discrepancy.outboundDetail.barang',
+            'discrepancy.outboundDetail.outbound.vendor',
+            'pembuat',
+        ])->findOrFail($id);
 
         if ($request->user()->role === 'vendor' && $dokumen->discrepancy->outboundDetail->outbound->ID_vendor !== $request->user()->ID_vendor) {
             abort(403, 'Unauthorized');
@@ -83,6 +95,10 @@ class DokumenR1Controller extends Controller
             }
         }
 
-        return $this->success(new DokumenR1Resource($dokumen), 'R1 Document status updated');
+        return $this->success(new DokumenR1Resource($dokumen->load([
+            'discrepancy.outboundDetail.barang',
+            'discrepancy.outboundDetail.outbound.vendor',
+            'pembuat',
+        ])), 'R1 Document status updated');
     }
 }
