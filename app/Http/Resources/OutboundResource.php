@@ -19,6 +19,13 @@ class OutboundResource extends JsonResource
             'status' => $this->status,
             'dibuat_oleh' => $this->dibuat_oleh,
             'created_at' => $this->created_at,
+            'total_qr' => $this->when(isset($this->total_qr), (int) $this->total_qr),
+            'ready_qr' => $this->when(isset($this->ready_qr), (int) $this->ready_qr),
+            'qr_ready' => $this->when(
+                isset($this->total_qr, $this->ready_qr),
+                fn () => $this->status !== 'draft' && (int) $this->total_qr > 0 && (int) $this->ready_qr === (int) $this->total_qr
+            ),
+            'has_discrepancy' => $this->when(isset($this->has_discrepancy), fn () => (bool) $this->has_discrepancy),
             'vendor' => $this->whenLoaded('vendor', function () {
                 return [
                     'ID_vendor' => $this->vendor->ID_vendor,
