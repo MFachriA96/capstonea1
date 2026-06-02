@@ -15,6 +15,7 @@ use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
@@ -286,15 +287,21 @@ class DashboardController extends Controller
     {
         $scopedOutbounds = $this->buildScopedOutboundQuery($request);
         $scopedDiscrepancies = $this->buildScopedDiscrepancyQuery($request);
+        $submittedQrNotReady = 0;
+
+        // Be tolerant to production environments that have not applied the QR column migration yet.
+        if (Schema::hasColumn('tabel_outbound_detail', 'qr_token')) {
+            $submittedQrNotReady = (clone $scopedOutbounds)
+                ->where('status', '!=', 'draft')
+                ->whereHas('details', fn(Builder $q) => $q->whereNull('qr_token'))
+                ->count();
+        }
 
         return [
             'draft_pending_submit' => (clone $scopedOutbounds)
                 ->where('status', 'draft')
                 ->count(),
-            'submitted_qr_not_ready' => (clone $scopedOutbounds)
-                ->where('status', '!=', 'draft')
-                ->whereHas('details', fn(Builder $q) => $q->whereNull('qr_token'))
-                ->count(),
+            'submitted_qr_not_ready' => $submittedQrNotReady,
             'pending_discrepancy_review' => (clone $scopedDiscrepancies)
                 ->where('status', '!=', 'match')
                 ->where(function (Builder $q) {
