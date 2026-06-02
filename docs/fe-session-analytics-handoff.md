@@ -1,51 +1,56 @@
 # FE Session Handoff: Analytics Endpoints
 
-Last updated: 2026-06-01  
-Branch: `alfi/continue`
-
----
+Last updated: 2026-06-02
+Repo: `capstonea1`
 
 ## Status
 
-Analytics subset sudah di-implement di backend.  
-22 tests passing.
+Analytics subset untuk dashboard `manager` dan `vendor` sudah aktif di backend.
 
----
+Verifikasi backend terakhir:
+- `php artisan test`
+- hasil: `24 passed`
 
-## Endpoints Baru
+## Endpoint yang Dipakai FE
 
-### Manager Analytics
+### Manager analytics
 
-```
+```http
 GET /api/dashboard/manager-analytics
-Authorization: Bearer <token>   (role: manager | admin)
+Authorization: Bearer <token>
 ```
 
-Query params (opsional):
-- `?vendor_id=5` — filter ke satu vendor
+Role yang boleh:
+- `manager`
+- `admin`
 
-### Vendor Analytics
+Query param opsional:
+- `vendor_id=<id>` untuk filter analytics ke satu vendor
 
-```
+### Vendor analytics
+
+```http
 GET /api/dashboard/vendor-analytics
-Authorization: Bearer <token>   (role: vendor)
+Authorization: Bearer <token>
 ```
 
-Vendor auto-scoped ke vendor user sendiri.
+Role yang boleh:
+- `vendor`
 
----
+Catatan:
+- vendor otomatis terscope ke `ID_vendor` milik user login
 
-## Response Shape
+## Response Shape Final
 
-### Manager Analytics
+### `GET /api/dashboard/manager-analytics`
 
 ```json
 {
+  "success": true,
   "data": {
     "role_scope": "manager",
-    "generated_at": "2026-06-01T10:00:00.000000Z",
+    "generated_at": "2026-06-02T10:00:00.000000Z",
     "date_basis": "dispatch_date",
-
     "discrepancy_by_part": [
       {
         "part_id": 10,
@@ -56,7 +61,6 @@ Vendor auto-scoped ke vendor user sendiri.
         "total_non_match": 3
       }
     ],
-
     "discrepancy_by_vendor": [
       {
         "vendor_id": 5,
@@ -66,7 +70,6 @@ Vendor auto-scoped ke vendor user sendiri.
         "discrepancy_rate": 0.3
       }
     ],
-
     "schedule_risk": {
       "dispatch_today": 2,
       "arrival_today": 3,
@@ -74,26 +77,24 @@ Vendor auto-scoped ke vendor user sendiri.
       "arrived_awaiting_verification": 2,
       "missing_schedule_data": 0
     },
-
     "action_queue": {
       "draft_pending_submit": 2,
       "submitted_qr_not_ready": 1,
       "pending_discrepancy_review": 3
     },
-
     "audit_evidence_summary": {
       "shipments_with_photo": 8,
       "shipments_without_photo": 2,
       "shipments_with_location": 7,
       "shipments_with_timestamp": 10
     },
-
     "trend_by_date": [
       {
-        "date": "2026-06-01",
+        "date": "2026-06-02",
         "shipments_total": 10,
         "shipments_currently_verified": 7,
         "shipments_with_discrepancy": 2,
+        "pending_review": 1,
         "discrepancy_rows": 4
       }
     ]
@@ -102,81 +103,101 @@ Vendor auto-scoped ke vendor user sendiri.
 }
 ```
 
-### Vendor Analytics
+### `GET /api/dashboard/vendor-analytics`
 
-Shape sama, minus `discrepancy_by_vendor`:
+Shape sama, kecuali `discrepancy_by_vendor` tidak ada.
 
 ```json
 {
+  "success": true,
   "data": {
     "role_scope": "vendor",
-    "generated_at": "...",
+    "generated_at": "2026-06-02T10:00:00.000000Z",
     "date_basis": "dispatch_date",
-    "discrepancy_by_part": [...],
-    "schedule_risk": {...},
-    "action_queue": {...},
-    "audit_evidence_summary": {...},
-    "trend_by_date": [...]
-  }
+    "discrepancy_by_part": [],
+    "schedule_risk": {
+      "dispatch_today": 0,
+      "arrival_today": 0,
+      "overdue_shipping": 0,
+      "arrived_awaiting_verification": 0,
+      "missing_schedule_data": 0
+    },
+    "action_queue": {
+      "draft_pending_submit": 0,
+      "submitted_qr_not_ready": 0,
+      "pending_discrepancy_review": 0
+    },
+    "audit_evidence_summary": {
+      "shipments_with_photo": 0,
+      "shipments_without_photo": 0,
+      "shipments_with_location": 0,
+      "shipments_with_timestamp": 0
+    },
+    "trend_by_date": [
+      {
+        "date": "2026-06-02",
+        "shipments_total": 2,
+        "shipments_currently_verified": 1,
+        "shipments_with_discrepancy": 1,
+        "pending_review": 1,
+        "discrepancy_rows": 1
+      }
+    ]
+  },
+  "message": "success"
 }
 ```
 
----
+## Arti Field Penting
 
-## Field Notes Penting
-
-### `discrepancy_rate`
-Float 0–1. Bukan persen string.  
-`0.3` = 30% shipments dari vendor tsb punya discrepancy.
+### `date_basis`
+- selalu `dispatch_date`
+- bucket tanggal diambil dari `tabel_outbound.waktu_kirim`
 
 ### `trend_by_date`
-- Diurutkan DESC (terbaru dulu), max 30 data point
-- `date_basis: "dispatch_date"` — date bucket dari `waktu_kirim`, **bukan** verified date
-- `shipments_currently_verified` = berapa dari bucket itu yang sekarang berstatus verified (bukan "kapan" verified)
+- urut terbaru dulu
+- maksimal 30 bucket tanggal
+- `shipments_currently_verified` artinya shipment dalam bucket itu yang statusnya saat ini `verified`
+- `pending_review` artinya discrepancy non-`match` yang belum ada action, atau masih ada action `pending`
+
+### `discrepancy_by_vendor`
+- hanya ada di `manager-analytics`
+- `discrepancy_rate` adalah float `0..1`, bukan string persen
+
+### `schedule_risk`
+- `overdue_shipping` = status `submitted|in_transit` dan `estimasi_tiba < now`
+- `arrived_awaiting_verification` = shipment status `arrived`
 
 ### `action_queue`
-- `submitted_qr_not_ready` = shipment status != draft tapi ada detail yang QR token belum di-generate
-- `awaiting_vendor_response` **tidak ada** — jangan render field ini
+- `draft_pending_submit` = outbound masih `draft`
+- `submitted_qr_not_ready` = outbound non-draft yang masih punya detail tanpa `qr_token`
+- `pending_discrepancy_review` = discrepancy non-`match` yang belum selesai direview
 
 ### `audit_evidence_summary`
-- `shipments_without_photo` = shipments yang sudah received (inbound exist) tapi tanpa foto
-- Photo = `tabel_foto`, bukan GPS/geotag — location proof bersifat partial
+- dihitung dari shipment yang sudah punya inbound
+- photo berasal dari relasi foto inbound/manual verification
+- location masih bersifat partial context, bukan GPS proof di level foto
 
----
+## Yang Aman Dipakai FE Sekarang
 
-## Jawaban Eksplisit untuk FE
+- chart trend shipment/discrepancy berbasis `dispatch_date`
+- breakdown discrepancy per part
+- breakdown discrepancy per vendor untuk manager
+- widget schedule risk
+- widget action queue
+- widget audit evidence summary
 
-| Pertanyaan | Jawaban |
-|---|---|
-| Apakah ada `line` data? | **Tidak**. Closest: `kode_area` di gudang, tapi bukan production line |
-| Apakah ada `awaiting_vendor_response`? | **Tidak** |
-| Audit evidence: photo? | Ada, partial (bukan geotag) |
-| Audit evidence: timestamp? | Ada |
-| Audit evidence: location? | Ada, partial (warehouse context, bukan GPS) |
-| Default `trend_by_date` basis? | `dispatch_date` dari `waktu_kirim` |
+## Yang Harus Ditunda
 
----
+- `discrepancy_by_line`
+- `awaiting_vendor_response`
 
-## Yang Belum Bisa Diimplementasikan
+Alasan:
+- `line` belum ada sebagai entity/domain yang valid
+- `awaiting_vendor_response` belum ada sebagai state canonical
 
-Jangan build UI yang blocking untuk ini — domain belum support:
+## Referensi Utama
 
-- `discrepancy_by_line` — tidak ada entity `line` di domain
-- `awaiting_vendor_response` — tidak ada canonical state ini
+- kontrak dashboard dasar: `docs/superpowers/specs/dashboard-manager-vendor-api-contract.md`
+- keputusan extension analytics: `docs/superpowers/specs/dashboard-manager-vendor-api-contract-extension-decision.md`
 
----
-
-## Endpoints yang Sudah Ada (Tetap Valid)
-
-```
-GET /api/dashboard/summary
-GET /api/dashboard/manager-overview
-GET /api/dashboard/vendor-overview
-GET /api/outbound?status_bucket=shipping|delivered
-GET /api/outbound?has_discrepancy=0|1
-GET /api/discrepancy?pending_review=0|1
-GET /api/outbound/{id}/qr-token
-```
-
-Ref lengkap: `docs/superpowers/specs/dashboard-manager-vendor-api-contract.md`  
-Keputusan extension: `docs/superpowers/specs/dashboard-manager-vendor-api-contract-extension-decision.md`
