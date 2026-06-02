@@ -36,6 +36,12 @@ class Discrepancy extends Model
         return $this->hasMany(DiscrepancyAction::class, 'ID_discrepancy', 'ID_discrepancy');
     }
 
+    public function latestAction()
+    {
+        return $this->hasOne(DiscrepancyAction::class, 'ID_discrepancy', 'ID_discrepancy')
+            ->latestOfMany('action_time');
+    }
+
     public function dokumenR1()
     {
         return $this->hasOne(DokumenR1::class, 'ID_discrepancy', 'ID_discrepancy');

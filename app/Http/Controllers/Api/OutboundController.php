@@ -8,6 +8,7 @@ use App\Http\Resources\OutboundResource;
 use App\Models\Outbound;
 use App\Services\OutboundService;
 use App\Traits\ApiResponse;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -24,10 +25,28 @@ class OutboundController extends Controller
 
     public function index(Request $request)
     {
-        $query = Outbound::with(['vendor', 'pembuatOutbound']);
+        $query = Outbound::with(['vendor', 'pembuatOutbound'])
+            ->withCount([
+                'details as total_qr',
+                'details as ready_qr' => fn (Builder $detailQuery) => $detailQuery->whereNotNull('qr_token'),
+            ])
+            ->withExists([
+                'details as has_discrepancy' => fn (Builder $detailQuery) => $detailQuery->whereHas(
+                    'discrepancies',
+                    fn (Builder $discrepancyQuery) => $discrepancyQuery->where('status', '!=', 'match')
+                ),
+            ]);
 
         if ($request->user()->role === 'vendor') {
             $query->where('ID_vendor', $request->user()->ID_vendor);
+        }
+
+        if ($request->filled('status_bucket')) {
+            $this->applyStatusBucketFilter($query, (string) $request->query('status_bucket'));
+        }
+
+        if ($request->has('has_discrepancy')) {
+            $this->applyHasDiscrepancyFilter($query, $request->query('has_discrepancy'));
         }
 
         return $this->success(OutboundResource::collection($query->paginate(15))->response()->getData(true));
@@ -119,6 +138,44 @@ class OutboundController extends Controller
             ];
         });
 
-        return $this->success(['qr_tokens' => $qrTokens]);
+        $totalQr = $qrTokens->count();
+        $readyQr = $qrTokens->filter(fn (array $detail) => !empty($detail['qr_token']))->count();
+
+        return $this->success([
+            'shipment_status' => $outbound->status,
+            'qr_ready' => $outbound->status !== 'draft' && $totalQr > 0 && $readyQr === $totalQr,
+            'total_qr' => $totalQr,
+            'ready_qr' => $readyQr,
+            'qr_tokens' => $qrTokens,
+        ]);
+    }
+
+    protected function applyStatusBucketFilter(Builder $query, string $statusBucket): void
+    {
+        match ($statusBucket) {
+            'draft' => $query->where('status', 'draft'),
+            'shipping' => $query->whereIn('status', ['submitted', 'in_transit']),
+            'delivered' => $query->whereIn('status', ['arrived', 'verified']),
+            default => null,
+        };
+    }
+
+    protected function applyHasDiscrepancyFilter(Builder $query, mixed $rawValue): void
+    {
+        $hasDiscrepancy = filter_var($rawValue, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        if ($hasDiscrepancy === null) {
+            return;
+        }
+
+        $constraint = fn (Builder $discrepancyQuery) => $discrepancyQuery->where('status', '!=', 'match');
+
+        if ($hasDiscrepancy) {
+            $query->whereHas('details.discrepancies', $constraint);
+
+            return;
+        }
+
+        $query->whereDoesntHave('details.discrepancies', $constraint);
     }
 }

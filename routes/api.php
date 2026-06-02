@@ -97,8 +97,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Dashboard
     Route::prefix('dashboard')->group(function () {
         Route::get('/summary', [DashboardController::class, 'summary']);
+        Route::get('/manager-overview', [DashboardController::class, 'managerOverview']);
+        Route::get('/vendor-overview', [DashboardController::class, 'vendorOverview']);
         Route::get('/discrepancy-stats', [DashboardController::class, 'discrepancyStats']); // by vendor/date/etc
         Route::get('/pending-actions', [DashboardController::class, 'pendingActions']);
         Route::get('/vendor-performance', [DashboardController::class, 'vendorPerformance']);
+        Route::get('/manager-analytics', [DashboardController::class, 'managerAnalytics']);
+        Route::get('/vendor-analytics', [DashboardController::class, 'vendorAnalytics']);
     });
 });
