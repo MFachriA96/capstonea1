@@ -176,6 +176,8 @@ class DashboardController extends Controller
 
     protected function buildDiscrepancyByPart(Request $request): array
     {
+        $barangId = $this->wrapIdentifier('b.ID_barang');
+
         $query = DB::table('tabel_discrepancy as d')
             ->join('tabel_outbound_detail as od', 'od.ID_outbound_detail', '=', 'd.ID_outbound_detail')
             ->join('tabel_barang as b', 'b.ID_barang', '=', 'od.ID_barang')
@@ -191,7 +193,7 @@ class DashboardController extends Controller
 
         return $query
             ->selectRaw("
-                b.ID_barang as part_id,
+                {$barangId} as part_id,
                 b.nama_barang as part_name,
                 SUM(CASE WHEN d.status = 'mismatch' THEN 1 ELSE 0 END) as mismatch,
                 SUM(CASE WHEN d.status = 'missing' THEN 1 ELSE 0 END) as missing,
@@ -214,6 +216,10 @@ class DashboardController extends Controller
 
     protected function buildDiscrepancyByVendorAnalytics(Request $request): array
     {
+        $vendorId = $this->wrapIdentifier('ID_vendor');
+        $outboundVendorId = $this->wrapIdentifier('o.ID_vendor');
+        $outboundId = $this->wrapIdentifier('o.ID_outbound');
+
         $vendorQuery = Vendor::query();
 
         if ($request->filled('vendor_id')) {
@@ -228,7 +234,7 @@ class DashboardController extends Controller
         }
 
         $totalByVendor = DB::table('tabel_outbound')
-            ->selectRaw('ID_vendor, COUNT(*) as total_shipments')
+            ->selectRaw("{$vendorId}, COUNT(*) as total_shipments")
             ->whereIn('ID_vendor', $vendorIds)
             ->groupBy('ID_vendor')
             ->get()
@@ -239,7 +245,7 @@ class DashboardController extends Controller
             ->join('tabel_discrepancy as d', 'd.ID_outbound_detail', '=', 'od.ID_outbound_detail')
             ->where('d.status', '!=', 'match')
             ->whereIn('o.ID_vendor', $vendorIds)
-            ->selectRaw('o.ID_vendor, COUNT(DISTINCT o.ID_outbound) as shipments_with_discrepancy')
+            ->selectRaw("{$outboundVendorId}, COUNT(DISTINCT {$outboundId}) as shipments_with_discrepancy")
             ->groupBy('o.ID_vendor')
             ->get()
             ->keyBy('ID_vendor');
@@ -335,6 +341,10 @@ class DashboardController extends Controller
 
     protected function buildTrendByDate(Request $request): array
     {
+        $trendOutboundId = $this->wrapIdentifier('o.ID_outbound');
+        $trendDiscrepancyId = $this->wrapIdentifier('d.ID_discrepancy');
+        $trendActionId = $this->wrapIdentifier('da.ID_action');
+
         $scopedOutbounds = $this->buildScopedOutboundQuery($request);
 
         $outboundRows = (clone $scopedOutbounds)
@@ -373,10 +383,10 @@ class DashboardController extends Controller
             ->leftJoin('tabel_discrepancy_action as da', 'da.ID_discrepancy', '=', 'd.ID_discrepancy')
             ->selectRaw("
                 DATE(o.waktu_kirim) as date,
-                COUNT(DISTINCT o.ID_outbound) as shipments_with_discrepancy,
-                COUNT(DISTINCT d.ID_discrepancy) as discrepancy_rows,
+                COUNT(DISTINCT {$trendOutboundId}) as shipments_with_discrepancy,
+                COUNT(DISTINCT {$trendDiscrepancyId}) as discrepancy_rows,
                 COUNT(DISTINCT CASE
-                    WHEN da.ID_action IS NULL OR da.status_action = 'pending' THEN d.ID_discrepancy
+                    WHEN {$trendActionId} IS NULL OR da.status_action = 'pending' THEN {$trendDiscrepancyId}
                     ELSE NULL
                 END) as pending_review
             ")
@@ -628,6 +638,9 @@ class DashboardController extends Controller
 
     protected function buildVendorPerformanceRows(Request $request): array
     {
+        $vendorId = $this->wrapIdentifier('ID_vendor');
+        $tableVendorId = $this->wrapIdentifier('tabel_outbound.ID_vendor');
+
         $vendorQuery = Vendor::query();
 
         if ($request->user()->role === 'vendor' && $request->user()->ID_vendor) {
@@ -644,14 +657,14 @@ class DashboardController extends Controller
         }
 
         $outboundCounts = Outbound::query()
-            ->selectRaw('ID_vendor, count(*) as total_shipments')
+            ->selectRaw("{$vendorId}, count(*) as total_shipments")
             ->whereIn('ID_vendor', $vendorIds)
             ->groupBy('ID_vendor')
             ->get()
             ->pluck('total_shipments', 'ID_vendor');
 
         $discrepancyCounts = Discrepancy::query()
-            ->selectRaw('tabel_outbound.ID_vendor as vendor_id, count(*) as total_discrepancies')
+            ->selectRaw("{$tableVendorId} as vendor_id, count(*) as total_discrepancies")
             ->join('tabel_outbound_detail', 'tabel_outbound_detail.ID_outbound_detail', '=', 'tabel_discrepancy.ID_outbound_detail')
             ->join('tabel_outbound', 'tabel_outbound.ID_outbound', '=', 'tabel_outbound_detail.ID_outbound')
             ->whereIn('tabel_outbound.ID_vendor', $vendorIds)
@@ -683,5 +696,10 @@ class DashboardController extends Controller
         }
 
         return $performance;
+    }
+
+    protected function wrapIdentifier(string $identifier): string
+    {
+        return DB::getQueryGrammar()->wrap($identifier);
     }
 }
