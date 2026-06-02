@@ -1,6 +1,6 @@
 # Dashboard Manager/Vendor API Contract Extension Decision
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## Decision Summary
 
@@ -23,11 +23,20 @@ Practical answer:
 - `Yes` for partial extension feasibility
 - `No` for full final approval today
 
+Current implementation status:
+
+- approved analytics subset is now implemented in backend via:
+  - `GET /api/dashboard/manager-analytics`
+  - `GET /api/dashboard/vendor-analytics`
+- full redesign-ready extension is still not approved because two requested concepts remain unsupported by current domain:
+  - `discrepancy_by_line`
+  - `awaiting_vendor_response`
+
 Frontend may continue with the current basic integration contract, but should still delay full redesign that depends on the analytics extension below.
 
 ## B. Approved Subset: What Can Be Supported By Current Domain
 
-The following items are supportable by the current model, but are not all implemented yet as API fields.
+The following items are supportable by the current model and are now implemented as API fields in the analytics endpoints below.
 
 Recommended endpoint grouping if implemented next:
 

@@ -818,6 +818,171 @@ class ManagerVendorDashboardContractTest extends TestCase
             ->assertStatus(403);
     }
 
+    public function test_manager_analytics_returns_trend_and_discrepancy_aggregates(): void
+    {
+        $manager = User::create([
+            'nama' => 'Manager Analytics',
+            'email' => 'manager-analytics@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'manager',
+        ]);
+
+        $creator = User::create([
+            'nama' => 'Admin Analytics',
+            'email' => 'admin-analytics@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'admin',
+        ]);
+
+        $vendorA = Vendor::create([
+            'nama_vendor' => 'Vendor Analytics A',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '08123222',
+            'email_vendor' => 'vendor-analytics-a@example.com',
+            'aktif' => true,
+        ]);
+
+        $vendorB = Vendor::create([
+            'nama_vendor' => 'Vendor Analytics B',
+            'lokasi_vendor' => 'Cikarang',
+            'kontak' => '08123333',
+            'email_vendor' => 'vendor-analytics-b@example.com',
+            'aktif' => true,
+        ]);
+
+        $barangA = Barang::create([
+            'part_code' => 'PA-001',
+            'part_name' => 'Printer Housing Cover',
+            'nama_barang' => 'Printer Housing Cover',
+            'satuan' => 'pcs',
+        ]);
+
+        $barangB = Barang::create([
+            'part_code' => 'PA-002',
+            'part_name' => 'Mainboard Assembly',
+            'nama_barang' => 'Mainboard Assembly',
+            'satuan' => 'pcs',
+        ]);
+
+        $gudang = Gudang::create([
+            'nama_gudang' => 'Gudang Analytics',
+            'lokasi_gudang' => 'Area Analytics',
+            'kode_area' => 'AN1',
+        ]);
+
+        $dayOne = now()->subDays(2)->setTime(9, 0);
+        $dayTwo = now()->subDay()->setTime(10, 0);
+
+        $vendorASubmitted = $this->createOutboundWithDetail($vendorA->ID_vendor, $creator->ID_user, $barangA->ID_barang, 'submitted', $dayOne->copy()->addDay(), $dayOne);
+        $vendorAVerified = $this->createOutboundWithDetail($vendorA->ID_vendor, $creator->ID_user, $barangA->ID_barang, 'verified', $dayOne->copy()->addDay(), $dayOne);
+        $vendorBVerified = $this->createOutboundWithDetail($vendorB->ID_vendor, $creator->ID_user, $barangB->ID_barang, 'verified', $dayTwo->copy()->addDay(), $dayTwo);
+
+        $this->createDiscrepancyForOutbound($vendorAVerified, $gudang->ID_gudang, $vendorA->ID_vendor, $creator->ID_user, $barangA->ID_barang, 'mismatch');
+        $this->createDiscrepancyForOutbound($vendorBVerified, $gudang->ID_gudang, $vendorB->ID_vendor, $creator->ID_user, $barangB->ID_barang, 'over');
+
+        $response = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/manager-analytics');
+
+        $response->assertOk()
+            ->assertJsonPath('data.role_scope', 'manager')
+            ->assertJsonPath('data.date_basis', 'dispatch_date')
+            ->assertJsonCount(2, 'data.trend_by_date')
+            ->assertJsonCount(2, 'data.discrepancy_by_vendor')
+            ->assertJsonCount(2, 'data.discrepancy_by_part');
+
+        $trend = collect($response->json('data.trend_by_date'))->keyBy('date');
+        $this->assertSame(2, $trend[$dayOne->toDateString()]['shipments_total']);
+        $this->assertSame(1, $trend[$dayOne->toDateString()]['shipments_currently_verified']);
+        $this->assertSame(1, $trend[$dayOne->toDateString()]['shipments_with_discrepancy']);
+        $this->assertSame(1, $trend[$dayOne->toDateString()]['pending_review']);
+        $this->assertSame(1, $trend[$dayOne->toDateString()]['discrepancy_rows']);
+        $this->assertSame(1, $trend[$dayTwo->toDateString()]['shipments_total']);
+
+        $byVendor = collect($response->json('data.discrepancy_by_vendor'))->keyBy('vendor_name');
+        $this->assertSame(2, $byVendor['Vendor Analytics A']['total_shipments']);
+        $this->assertSame(1, $byVendor['Vendor Analytics A']['shipments_with_discrepancy']);
+        $this->assertSame(0.5, $byVendor['Vendor Analytics A']['discrepancy_rate']);
+        $this->assertSame(1, $byVendor['Vendor Analytics B']['shipments_with_discrepancy']);
+
+        $byPart = collect($response->json('data.discrepancy_by_part'))->keyBy('part_name');
+        $this->assertSame(1, $byPart['Printer Housing Cover']['mismatch']);
+        $this->assertSame(1, $byPart['Mainboard Assembly']['over']);
+    }
+
+    public function test_vendor_analytics_is_scoped_to_authenticated_vendor(): void
+    {
+        $creator = User::create([
+            'nama' => 'Admin Vendor Analytics',
+            'email' => 'admin-vendor-analytics@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'admin',
+        ]);
+
+        $vendorA = Vendor::create([
+            'nama_vendor' => 'Vendor Scoped Analytics',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '08123444',
+            'email_vendor' => 'vendor-scoped-analytics@example.com',
+            'aktif' => true,
+        ]);
+
+        $vendorB = Vendor::create([
+            'nama_vendor' => 'Vendor Other Analytics',
+            'lokasi_vendor' => 'Karawang',
+            'kontak' => '08123555',
+            'email_vendor' => 'vendor-other-analytics@example.com',
+            'aktif' => true,
+        ]);
+
+        $vendorUser = User::create([
+            'nama' => 'Vendor Scoped User',
+            'email' => 'vendor-scoped-user@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'vendor',
+            'ID_vendor' => $vendorA->ID_vendor,
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'PA-003',
+            'part_name' => 'Panel Vendor Scoped',
+            'nama_barang' => 'Panel Vendor Scoped',
+            'satuan' => 'pcs',
+        ]);
+
+        $gudang = Gudang::create([
+            'nama_gudang' => 'Gudang Vendor Analytics',
+            'lokasi_gudang' => 'Area Vendor Analytics',
+            'kode_area' => 'AN2',
+        ]);
+
+        $dispatchDate = now()->subDay()->setTime(8, 0);
+        $vendorAVerified = $this->createOutboundWithDetail($vendorA->ID_vendor, $creator->ID_user, $barang->ID_barang, 'verified', $dispatchDate->copy()->addDay(), $dispatchDate);
+        $this->createOutboundWithDetail($vendorB->ID_vendor, $creator->ID_user, $barang->ID_barang, 'verified', $dispatchDate->copy()->addDay(), $dispatchDate);
+
+        $this->createDiscrepancyForOutbound($vendorAVerified, $gudang->ID_gudang, $vendorA->ID_vendor, $creator->ID_user, $barang->ID_barang, 'missing');
+
+        $response = $this
+            ->actingAs($vendorUser, 'sanctum')
+            ->getJson('/api/dashboard/vendor-analytics');
+
+        $response->assertOk()
+            ->assertJsonPath('data.role_scope', 'vendor')
+            ->assertJsonPath('data.date_basis', 'dispatch_date')
+            ->assertJsonCount(1, 'data.trend_by_date')
+            ->assertJsonCount(1, 'data.discrepancy_by_part');
+
+        $trend = collect($response->json('data.trend_by_date'))->first();
+        $this->assertSame(1, $trend['shipments_total']);
+        $this->assertSame(1, $trend['shipments_currently_verified']);
+        $this->assertSame(1, $trend['shipments_with_discrepancy']);
+        $this->assertSame(1, $trend['discrepancy_rows']);
+
+        $byPart = collect($response->json('data.discrepancy_by_part'))->first();
+        $this->assertSame('Panel Vendor Scoped', $byPart['part_name']);
+        $this->assertSame(1, $byPart['missing']);
+    }
+
     public function test_manager_analytics_returns_approved_subset_with_correct_shape(): void
     {
         $manager = User::create([
@@ -1038,13 +1203,14 @@ class ManagerVendorDashboardContractTest extends TestCase
         int $creatorId,
         int $barangId,
         string $status,
-        ?\Illuminate\Support\Carbon $estimatedArrival = null
+        ?\Illuminate\Support\Carbon $estimatedArrival = null,
+        ?\Illuminate\Support\Carbon $dispatchDate = null
     ): Outbound
     {
         $outbound = Outbound::create([
             'no_pengiriman' => 'DO-' . Str::upper(Str::random(10)),
             'ID_vendor' => $vendorId,
-            'waktu_kirim' => now(),
+            'waktu_kirim' => $dispatchDate ?? now(),
             'estimasi_tiba' => $estimatedArrival ?? now()->addDay(),
             'lokasi_asal' => 'Warehouse',
             'status' => $status,

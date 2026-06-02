@@ -359,7 +359,16 @@ class DashboardController extends Controller
         }
 
         $discrepancyRows = $discrepancyBase
-            ->selectRaw('DATE(o.waktu_kirim) as date, COUNT(DISTINCT o.ID_outbound) as shipments_with_discrepancy, COUNT(*) as discrepancy_rows')
+            ->leftJoin('tabel_discrepancy_action as da', 'da.ID_discrepancy', '=', 'd.ID_discrepancy')
+            ->selectRaw("
+                DATE(o.waktu_kirim) as date,
+                COUNT(DISTINCT o.ID_outbound) as shipments_with_discrepancy,
+                COUNT(DISTINCT d.ID_discrepancy) as discrepancy_rows,
+                COUNT(DISTINCT CASE
+                    WHEN da.ID_action IS NULL OR da.status_action = 'pending' THEN d.ID_discrepancy
+                    ELSE NULL
+                END) as pending_review
+            ")
             ->groupByRaw('DATE(o.waktu_kirim)')
             ->get()
             ->keyBy('date');
@@ -372,6 +381,7 @@ class DashboardController extends Controller
                 'shipments_total' => (int) $row->shipments_total,
                 'shipments_currently_verified' => (int) $row->shipments_currently_verified,
                 'shipments_with_discrepancy' => $discRow ? (int) $discRow->shipments_with_discrepancy : 0,
+                'pending_review' => $discRow ? (int) $discRow->pending_review : 0,
                 'discrepancy_rows' => $discRow ? (int) $discRow->discrepancy_rows : 0,
             ];
         })->values()->toArray();
