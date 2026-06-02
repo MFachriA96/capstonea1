@@ -350,7 +350,11 @@ class DashboardController extends Controller
             ->join('tabel_outbound as o', 'o.ID_outbound', '=', 'od.ID_outbound')
             ->where('d.status', '!=', 'match')
             ->whereNotNull('o.waktu_kirim')
-            ->whereIn(DB::raw('DATE(o.waktu_kirim)'), $dates);
+            ->where(function ($query) use ($dates) {
+                foreach ($dates as $date) {
+                    $query->orWhereDate('o.waktu_kirim', $date);
+                }
+            });
 
         if ($request->user()->role === 'vendor') {
             $discrepancyBase->where('o.ID_vendor', $request->user()->ID_vendor);
