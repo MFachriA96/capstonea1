@@ -37,6 +37,12 @@ class DiscrepancyController extends Controller
             });
         }
 
+        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
+            $query->whereHas('outboundDetail.outbound', function ($q) use ($warehouseId) {
+                $q->where('ID_gudang_tujuan', $warehouseId);
+            });
+        }
+
         return $this->success(DiscrepancyResource::collection($query->paginate(15))->response()->getData(true));
     }
 
@@ -77,5 +83,18 @@ class DiscrepancyController extends Controller
         }
 
         $query->whereHas('actions', fn (Builder $actionQuery) => $actionQuery->whereIn('status_action', ['done', 'cancelled']));
+    }
+
+    protected function resolveEffectiveWarehouseId(Request $request): ?int
+    {
+        if ($request->filled('ID_gudang')) {
+            return $request->integer('ID_gudang');
+        }
+
+        if ($request->user()->role === 'manager' && $request->user()->ID_gudang) {
+            return (int) $request->user()->ID_gudang;
+        }
+
+        return null;
     }
 }

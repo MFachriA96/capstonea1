@@ -19,6 +19,7 @@ class OutboundRequest extends FormRequest
             'waktu_kirim' => ['required', 'date'],
             'estimasi_tiba' => ['required', 'date', 'after_or_equal:waktu_kirim'],
             'lokasi_asal' => ['required', 'string', 'max:200'],
+            'target_warehouse_id' => ['required', 'integer', 'exists:tabel_gudang,ID_gudang'],
             'details' => ['required', 'array', 'min:1'],
             'details.*.ID_barang' => ['nullable', 'integer', 'exists:tabel_barang,ID_barang'],
             'details.*.nama_barang' => ['nullable', 'string', 'max:150'],

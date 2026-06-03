@@ -20,6 +20,7 @@ class RegisterRequest extends FormRequest
             'password' => ['required', 'string', 'min:8'],
             'role' => ['required', Rule::in(['admin', 'petugas', 'manager', 'vendor'])],
             'ID_vendor' => ['required_if:role,vendor', 'nullable', 'integer', 'exists:tabel_vendor,ID_vendor'],
+            'ID_gudang' => ['required_if:role,petugas', 'nullable', 'integer', 'exists:tabel_gudang,ID_gudang'],
         ];
     }
 }

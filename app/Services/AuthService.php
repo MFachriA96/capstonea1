@@ -18,9 +18,10 @@ class AuthService
             'password_hash' => $data['password_hash'],
             'role' => $data['role'],
             'ID_vendor' => $data['ID_vendor'] ?? null,
+            'ID_gudang' => $data['ID_gudang'] ?? null,
         ]);
 
-        return $user;
+        return $user->load(['vendor', 'warehouse']);
     }
 
     public function login(string $email, string $password): array
@@ -33,6 +34,8 @@ class AuthService
             ]);
         }
 
+        $user->loadMissing(['vendor', 'warehouse']);
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return [
@@ -43,6 +46,13 @@ class AuthService
                 'email' => $user->email,
                 'role' => $user->role,
                 'ID_vendor' => $user->ID_vendor,
+                'ID_gudang' => $user->ID_gudang,
+                'warehouse' => $user->warehouse ? [
+                    'ID_gudang' => $user->warehouse->ID_gudang,
+                    'nama_gudang' => $user->warehouse->nama_gudang,
+                    'lokasi_gudang' => $user->warehouse->lokasi_gudang,
+                    'kode_area' => $user->warehouse->kode_area,
+                ] : null,
             ],
         ];
     }

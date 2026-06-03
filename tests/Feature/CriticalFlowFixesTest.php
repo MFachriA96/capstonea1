@@ -220,6 +220,10 @@ class CriticalFlowFixesTest extends TestCase
             'kode_area' => 'A1',
         ]);
 
+        $officer->update([
+            'ID_gudang' => $gudang->ID_gudang,
+        ]);
+
         $outbound = Outbound::create([
             'no_pengiriman' => 'DO-20260422-0002',
             'ID_vendor' => $vendor->ID_vendor,
@@ -279,6 +283,10 @@ class CriticalFlowFixesTest extends TestCase
             'nama_gudang' => 'Gudang B',
             'lokasi_gudang' => 'Gedung B',
             'kode_area' => 'B1',
+        ]);
+
+        $officer->update([
+            'ID_gudang' => $gudang->ID_gudang,
         ]);
 
         $outbound = Outbound::create([
@@ -368,6 +376,10 @@ class CriticalFlowFixesTest extends TestCase
             'nama_gudang' => 'Gudang C',
             'lokasi_gudang' => 'Gedung C',
             'kode_area' => 'C1',
+        ]);
+
+        $officer->update([
+            'ID_gudang' => $gudang->ID_gudang,
         ]);
 
         $outbound = Outbound::create([

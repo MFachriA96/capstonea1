@@ -1198,6 +1198,359 @@ class ManagerVendorDashboardContractTest extends TestCase
             ->assertStatus(403);
     }
 
+    public function test_manager_overview_uses_default_warehouse_when_no_filter_and_allows_override(): void
+    {
+        $warehouseA = Gudang::create([
+            'nama_gudang' => 'Gudang Default A',
+            'lokasi_gudang' => 'Area Default A',
+            'kode_area' => 'DA1',
+        ]);
+
+        $warehouseB = Gudang::create([
+            'nama_gudang' => 'Gudang Default B',
+            'lokasi_gudang' => 'Area Default B',
+            'kode_area' => 'DB1',
+        ]);
+
+        $manager = User::create([
+            'nama' => 'Manager Default',
+            'email' => 'manager-default@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'manager',
+            'ID_gudang' => $warehouseA->ID_gudang,
+        ]);
+
+        $creator = User::create([
+            'nama' => 'Admin Default',
+            'email' => 'admin-default@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'admin',
+        ]);
+
+        $vendor = Vendor::create([
+            'nama_vendor' => 'Vendor Default',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '081230001',
+            'email_vendor' => 'vendor-default@example.com',
+            'aktif' => true,
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'P-DEF-01',
+            'part_name' => 'Default Scope Part',
+            'nama_barang' => 'Default Scope Part',
+            'satuan' => 'pcs',
+        ]);
+
+        $outboundA = $this->createOutboundWithDetail($vendor->ID_vendor, $creator->ID_user, $barang->ID_barang, 'submitted');
+        $outboundA->update(['ID_gudang_tujuan' => $warehouseA->ID_gudang]);
+
+        $outboundB = $this->createOutboundWithDetail($vendor->ID_vendor, $creator->ID_user, $barang->ID_barang, 'submitted');
+        $outboundB->update(['ID_gudang_tujuan' => $warehouseB->ID_gudang]);
+
+        $defaultResponse = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/manager-overview');
+
+        $defaultResponse->assertOk()
+            ->assertJsonPath('data.shipment_counts.total', 1)
+            ->assertJsonPath('data.recent_shipments.0.ID_outbound', $outboundA->ID_outbound);
+
+        $overrideResponse = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/manager-overview?ID_gudang=' . $warehouseB->ID_gudang);
+
+        $overrideResponse->assertOk()
+            ->assertJsonPath('data.shipment_counts.total', 1)
+            ->assertJsonPath('data.recent_shipments.0.ID_outbound', $outboundB->ID_outbound);
+    }
+
+    public function test_manager_analytics_uses_default_warehouse_when_no_filter_and_allows_override(): void
+    {
+        $warehouseA = Gudang::create([
+            'nama_gudang' => 'Gudang Analytics A',
+            'lokasi_gudang' => 'Area Analytics A',
+            'kode_area' => 'GA1',
+        ]);
+
+        $warehouseB = Gudang::create([
+            'nama_gudang' => 'Gudang Analytics B',
+            'lokasi_gudang' => 'Area Analytics B',
+            'kode_area' => 'GB1',
+        ]);
+
+        $manager = User::create([
+            'nama' => 'Manager Analytics Default',
+            'email' => 'manager-analytics-default@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'manager',
+            'ID_gudang' => $warehouseA->ID_gudang,
+        ]);
+
+        $creator = User::create([
+            'nama' => 'Admin Analytics Default',
+            'email' => 'admin-analytics-default@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'admin',
+        ]);
+
+        $vendorA = Vendor::create([
+            'nama_vendor' => 'Vendor Analytics Scope A',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '081230002',
+            'email_vendor' => 'vendor-analytics-scope-a@example.com',
+            'aktif' => true,
+        ]);
+
+        $vendorB = Vendor::create([
+            'nama_vendor' => 'Vendor Analytics Scope B',
+            'lokasi_vendor' => 'Cikarang',
+            'kontak' => '081230003',
+            'email_vendor' => 'vendor-analytics-scope-b@example.com',
+            'aktif' => true,
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'P-DEF-02',
+            'part_name' => 'Analytics Scope Part',
+            'nama_barang' => 'Analytics Scope Part',
+            'satuan' => 'pcs',
+        ]);
+
+        $dispatchDate = now()->subDay()->setTime(8, 0);
+        $outboundA = $this->createOutboundWithDetail($vendorA->ID_vendor, $creator->ID_user, $barang->ID_barang, 'verified', $dispatchDate->copy()->addDay(), $dispatchDate);
+        $outboundA->update(['ID_gudang_tujuan' => $warehouseA->ID_gudang]);
+        $this->createDiscrepancyForOutbound($outboundA, $warehouseA->ID_gudang, $vendorA->ID_vendor, $creator->ID_user, $barang->ID_barang, 'mismatch');
+
+        $outboundB = $this->createOutboundWithDetail($vendorB->ID_vendor, $creator->ID_user, $barang->ID_barang, 'verified', $dispatchDate->copy()->addDay(), $dispatchDate);
+        $outboundB->update(['ID_gudang_tujuan' => $warehouseB->ID_gudang]);
+        $this->createDiscrepancyForOutbound($outboundB, $warehouseB->ID_gudang, $vendorB->ID_vendor, $creator->ID_user, $barang->ID_barang, 'over');
+
+        $defaultResponse = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/manager-analytics');
+
+        $defaultResponse->assertOk()
+            ->assertJsonCount(1, 'data.discrepancy_by_vendor')
+            ->assertJsonPath('data.discrepancy_by_vendor.0.vendor_id', $vendorA->ID_vendor);
+
+        $overrideResponse = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/manager-analytics?ID_gudang=' . $warehouseB->ID_gudang);
+
+        $overrideResponse->assertOk()
+            ->assertJsonCount(1, 'data.discrepancy_by_vendor')
+            ->assertJsonPath('data.discrepancy_by_vendor.0.vendor_id', $vendorB->ID_vendor);
+    }
+
+    public function test_manager_outbound_index_uses_default_warehouse_when_no_filter_and_allows_override(): void
+    {
+        $warehouseA = Gudang::create([
+            'nama_gudang' => 'Gudang Outbound A',
+            'lokasi_gudang' => 'Area Outbound A',
+            'kode_area' => 'OA1',
+        ]);
+
+        $warehouseB = Gudang::create([
+            'nama_gudang' => 'Gudang Outbound B',
+            'lokasi_gudang' => 'Area Outbound B',
+            'kode_area' => 'OB1',
+        ]);
+
+        $manager = User::create([
+            'nama' => 'Manager Outbound Scope',
+            'email' => 'manager-outbound-scope@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'manager',
+            'ID_gudang' => $warehouseA->ID_gudang,
+        ]);
+
+        $creator = User::create([
+            'nama' => 'Admin Outbound Scope',
+            'email' => 'admin-outbound-scope@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'admin',
+        ]);
+
+        $vendor = Vendor::create([
+            'nama_vendor' => 'Vendor Outbound Scope',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '081230004',
+            'email_vendor' => 'vendor-outbound-scope@example.com',
+            'aktif' => true,
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'P-DEF-03',
+            'part_name' => 'Outbound Scope Part',
+            'nama_barang' => 'Outbound Scope Part',
+            'satuan' => 'pcs',
+        ]);
+
+        $outboundA = $this->createOutboundWithDetail($vendor->ID_vendor, $creator->ID_user, $barang->ID_barang, 'submitted');
+        $outboundA->update(['ID_gudang_tujuan' => $warehouseA->ID_gudang]);
+
+        $outboundB = $this->createOutboundWithDetail($vendor->ID_vendor, $creator->ID_user, $barang->ID_barang, 'submitted');
+        $outboundB->update(['ID_gudang_tujuan' => $warehouseB->ID_gudang]);
+
+        $defaultResponse = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/outbound');
+
+        $defaultResponse->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.ID_outbound', $outboundA->ID_outbound);
+
+        $overrideResponse = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/outbound?ID_gudang=' . $warehouseB->ID_gudang);
+
+        $overrideResponse->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.ID_outbound', $outboundB->ID_outbound);
+    }
+
+    public function test_manager_discrepancy_index_and_dashboard_extras_use_default_warehouse_when_no_filter_and_allow_override(): void
+    {
+        $warehouseA = Gudang::create([
+            'nama_gudang' => 'Gudang Discrepancy A',
+            'lokasi_gudang' => 'Area Discrepancy A',
+            'kode_area' => 'DA1',
+        ]);
+
+        $warehouseB = Gudang::create([
+            'nama_gudang' => 'Gudang Discrepancy B',
+            'lokasi_gudang' => 'Area Discrepancy B',
+            'kode_area' => 'DB1',
+        ]);
+
+        $manager = User::create([
+            'nama' => 'Manager Discrepancy Scope',
+            'email' => 'manager-discrepancy-scope@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'manager',
+            'ID_gudang' => $warehouseA->ID_gudang,
+        ]);
+
+        $creator = User::create([
+            'nama' => 'Admin Discrepancy Scope',
+            'email' => 'admin-discrepancy-scope@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'admin',
+        ]);
+
+        $vendorA = Vendor::create([
+            'nama_vendor' => 'Vendor Discrepancy A',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '081230005',
+            'email_vendor' => 'vendor-discrepancy-a@example.com',
+            'aktif' => true,
+        ]);
+
+        $vendorB = Vendor::create([
+            'nama_vendor' => 'Vendor Discrepancy B',
+            'lokasi_vendor' => 'Cikarang',
+            'kontak' => '081230006',
+            'email_vendor' => 'vendor-discrepancy-b@example.com',
+            'aktif' => true,
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'P-DEF-04',
+            'part_name' => 'Discrepancy Scope Part',
+            'nama_barang' => 'Discrepancy Scope Part',
+            'satuan' => 'pcs',
+        ]);
+
+        $outboundA = $this->createOutboundWithDetail($vendorA->ID_vendor, $creator->ID_user, $barang->ID_barang, 'verified');
+        $outboundA->update(['ID_gudang_tujuan' => $warehouseA->ID_gudang]);
+        $discrepancyA = $this->createDiscrepancyForOutbound($outboundA, $warehouseA->ID_gudang, $vendorA->ID_vendor, $creator->ID_user, $barang->ID_barang, 'mismatch');
+
+        $outboundB = $this->createOutboundWithDetail($vendorB->ID_vendor, $creator->ID_user, $barang->ID_barang, 'verified');
+        $outboundB->update(['ID_gudang_tujuan' => $warehouseB->ID_gudang]);
+        $discrepancyB = $this->createDiscrepancyForOutbound($outboundB, $warehouseB->ID_gudang, $vendorB->ID_vendor, $creator->ID_user, $barang->ID_barang, 'over');
+
+        DiscrepancyAction::create([
+            'ID_discrepancy' => $discrepancyA->ID_discrepancy,
+            'action_type' => 'hold',
+            'action_by' => $creator->ID_user,
+            'notes' => 'Pending A',
+            'status_action' => 'pending',
+        ]);
+
+        DiscrepancyAction::create([
+            'ID_discrepancy' => $discrepancyB->ID_discrepancy,
+            'action_type' => 'hold',
+            'action_by' => $creator->ID_user,
+            'notes' => 'Pending B',
+            'status_action' => 'pending',
+        ]);
+
+        $defaultIndex = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/discrepancy');
+
+        $defaultIndex->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.ID_discrepancy', $discrepancyA->ID_discrepancy);
+
+        $overrideIndex = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/discrepancy?ID_gudang=' . $warehouseB->ID_gudang);
+
+        $overrideIndex->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.ID_discrepancy', $discrepancyB->ID_discrepancy);
+
+        $defaultStats = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/discrepancy-stats');
+
+        $defaultStats->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.ID_discrepancy', $discrepancyA->ID_discrepancy);
+
+        $defaultPending = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/pending-actions');
+
+        $defaultPending->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.ID_action', DiscrepancyAction::where('ID_discrepancy', $discrepancyA->ID_discrepancy)->firstOrFail()->ID_action);
+
+        $defaultPerformance = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/vendor-performance');
+
+        $defaultPerformance->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.vendor', $vendorA->nama_vendor);
+
+        $overrideStats = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/discrepancy-stats?ID_gudang=' . $warehouseB->ID_gudang);
+
+        $overrideStats->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.ID_discrepancy', $discrepancyB->ID_discrepancy);
+
+        $overridePending = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/pending-actions?ID_gudang=' . $warehouseB->ID_gudang);
+
+        $overridePending->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.ID_action', DiscrepancyAction::where('ID_discrepancy', $discrepancyB->ID_discrepancy)->firstOrFail()->ID_action);
+
+        $overridePerformance = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/vendor-performance?ID_gudang=' . $warehouseB->ID_gudang);
+
+        $overridePerformance->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.vendor', $vendorB->nama_vendor);
+    }
+
     protected function createOutboundWithDetail(
         int $vendorId,
         int $creatorId,

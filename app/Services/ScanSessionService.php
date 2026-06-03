@@ -6,6 +6,7 @@ use App\Models\CvResult;
 use App\Models\Foto;
 use App\Models\Inbound;
 use App\Models\InboundDetail;
+use App\Models\OutboundBox;
 use App\Models\ScanSession;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
@@ -32,10 +33,22 @@ class ScanSessionService
                 abort(400, 'Cannot start photo session until all QRs are scanned.');
             }
 
-            $outboundDetail = \App\Models\OutboundDetail::where('qr_token', $qrToken)->firstOrFail();
-            
-            if (!$outboundDetail->sudah_discan) {
-                abort(400, 'This specific box QR has not been scanned in the inbound process yet.');
+            $box = OutboundBox::with('outboundDetail')
+                ->where('qr_token', $qrToken)
+                ->first();
+
+            if ($box) {
+                if (!in_array($box->scan_status, ['scanned', 'verified', 'issue_flagged'], true)) {
+                    abort(400, 'This specific box QR has not been scanned in the inbound process yet.');
+                }
+
+                $outboundDetail = $box->outboundDetail;
+            } else {
+                $outboundDetail = \App\Models\OutboundDetail::where('qr_token', $qrToken)->firstOrFail();
+
+                if (!$outboundDetail->sudah_discan) {
+                    abort(400, 'This specific box QR has not been scanned in the inbound process yet.');
+                }
             }
 
             $existingSessionsCount = ScanSession::where('ID_inbound', $inboundId)->count();
@@ -45,6 +58,7 @@ class ScanSessionService
                 'ID_inbound' => $inboundId,
                 'ID_barang' => $outboundDetail->ID_barang,
                 'ID_outbound_detail' => $outboundDetail->ID_outbound_detail,
+                'ID_outbound_box' => $box?->ID_outbound_box,
                 'urutan_scan' => $urutanScan,
                 'waktu_mulai' => now(),
                 'status_sesi' => 'berlangsung',

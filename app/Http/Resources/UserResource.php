@@ -15,12 +15,21 @@ class UserResource extends JsonResource
             'email' => $this->email,
             'role' => $this->role,
             'ID_vendor' => $this->ID_vendor,
+            'ID_gudang' => $this->ID_gudang,
             'created_at' => $this->created_at,
             'vendor' => $this->whenLoaded('vendor', function () {
                 return [
                     'ID_vendor' => $this->vendor->ID_vendor,
                     'nama_vendor' => $this->vendor->nama_vendor,
                     'aktif' => $this->vendor->aktif,
+                ];
+            }),
+            'warehouse' => $this->whenLoaded('warehouse', function () {
+                return [
+                    'ID_gudang' => $this->warehouse->ID_gudang,
+                    'nama_gudang' => $this->warehouse->nama_gudang,
+                    'lokasi_gudang' => $this->warehouse->lokasi_gudang,
+                    'kode_area' => $this->warehouse->kode_area,
                 ];
             }),
         ];
