@@ -754,6 +754,10 @@ class DashboardController extends Controller
 
     protected function resolveEffectiveWarehouseId(Request $request): ?int
     {
+        if ((string) $request->query('warehouse_scope') === 'all') {
+            return null;
+        }
+
         if ($request->filled('ID_gudang')) {
             return $request->integer('ID_gudang');
         }
