@@ -124,21 +124,37 @@ class DashboardController extends Controller
             $query->where('status', $request->status);
         }
 
+        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
+            $query->whereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
+                $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
+            });
+        }
+
         return $this->success($query->paginate(15));
     }
 
-    public function pendingActions()
+    public function pendingActions(Request $request)
     {
         $actions = DiscrepancyAction::with(['discrepancy.outboundDetail.barang'])
             ->where('status_action', 'pending')
+            ->when($request->user()->role === 'vendor', function ($query) use ($request) {
+                $query->whereHas('discrepancy.outboundDetail.outbound', function (Builder $outboundQuery) use ($request) {
+                    $outboundQuery->where('ID_vendor', $request->user()->ID_vendor);
+                });
+            })
+            ->when(($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null, function ($query) use ($warehouseId) {
+                $query->whereHas('discrepancy.outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
+                    $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
+                });
+            })
             ->get();
 
         return $this->success($actions);
     }
 
-    public function vendorPerformance()
+    public function vendorPerformance(Request $request)
     {
-        return $this->success($this->buildVendorPerformanceRows(request()));
+        return $this->success($this->buildVendorPerformanceRows($request));
     }
 
     public function managerAnalytics(Request $request)
@@ -177,18 +193,22 @@ class DashboardController extends Controller
     protected function buildDiscrepancyByPart(Request $request): array
     {
         $barangId = $this->wrapIdentifier('b.ID_barang');
+        $warehouseId = $this->resolveEffectiveWarehouseId($request);
 
         $query = DB::table('tabel_discrepancy as d')
             ->join('tabel_outbound_detail as od', 'od.ID_outbound_detail', '=', 'd.ID_outbound_detail')
+            ->join('tabel_outbound as o', 'o.ID_outbound', '=', 'od.ID_outbound')
             ->join('tabel_barang as b', 'b.ID_barang', '=', 'od.ID_barang')
             ->where('d.status', '!=', 'match');
 
         if ($request->user()->role === 'vendor') {
-            $query->join('tabel_outbound as o', 'o.ID_outbound', '=', 'od.ID_outbound')
-                ->where('o.ID_vendor', $request->user()->ID_vendor);
+            $query->where('o.ID_vendor', $request->user()->ID_vendor);
         } elseif ($request->filled('vendor_id')) {
-            $query->join('tabel_outbound as o', 'o.ID_outbound', '=', 'od.ID_outbound')
-                ->where('o.ID_vendor', $request->integer('vendor_id'));
+            $query->where('o.ID_vendor', $request->integer('vendor_id'));
+        }
+
+        if ($warehouseId !== null) {
+            $query->where('o.ID_gudang_tujuan', $warehouseId);
         }
 
         return $query
@@ -219,6 +239,7 @@ class DashboardController extends Controller
         $vendorId = $this->wrapIdentifier('ID_vendor');
         $outboundVendorId = $this->wrapIdentifier('o.ID_vendor');
         $outboundId = $this->wrapIdentifier('o.ID_outbound');
+        $warehouseId = $this->resolveEffectiveWarehouseId($request);
 
         $vendorQuery = Vendor::query();
 
@@ -236,6 +257,7 @@ class DashboardController extends Controller
         $totalByVendor = DB::table('tabel_outbound')
             ->selectRaw("{$vendorId}, COUNT(*) as total_shipments")
             ->whereIn('ID_vendor', $vendorIds)
+            ->when($warehouseId !== null, fn ($query) => $query->where('ID_gudang_tujuan', $warehouseId))
             ->groupBy('ID_vendor')
             ->get()
             ->keyBy('ID_vendor');
@@ -245,6 +267,7 @@ class DashboardController extends Controller
             ->join('tabel_discrepancy as d', 'd.ID_outbound_detail', '=', 'od.ID_outbound_detail')
             ->where('d.status', '!=', 'match')
             ->whereIn('o.ID_vendor', $vendorIds)
+            ->when($warehouseId !== null, fn ($query) => $query->where('o.ID_gudang_tujuan', $warehouseId))
             ->selectRaw("{$outboundVendorId}, COUNT(DISTINCT {$outboundId}) as shipments_with_discrepancy")
             ->groupBy('o.ID_vendor')
             ->get()
@@ -261,7 +284,10 @@ class DashboardController extends Controller
                 'shipments_with_discrepancy' => $withDisc,
                 'discrepancy_rate' => $total > 0 ? round($withDisc / $total, 4) : 0.0,
             ];
-        })->values()->toArray();
+        })
+            ->filter(fn (array $row) => $row['total_shipments'] > 0)
+            ->values()
+            ->toArray();
     }
 
     protected function buildScheduleRisk(Request $request): array
@@ -425,6 +451,10 @@ class DashboardController extends Controller
             return;
         }
 
+        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
+            $query->where('ID_gudang_tujuan', $warehouseId);
+        }
+
         if ($request->filled('vendor_id')) {
             $query->where('ID_vendor', $request->integer('vendor_id'));
         }
@@ -436,6 +466,10 @@ class DashboardController extends Controller
             $query->where('ID_vendor', $request->user()->ID_vendor);
 
             return;
+        }
+
+        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
+            $query->where('ID_gudang', $warehouseId);
         }
 
         if ($request->filled('vendor_id')) {
@@ -451,6 +485,12 @@ class DashboardController extends Controller
             });
 
             return;
+        }
+
+        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
+            $query->whereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
+                $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
+            });
         }
 
         if ($request->filled('vendor_id')) {
@@ -470,6 +510,12 @@ class DashboardController extends Controller
             });
 
             return;
+        }
+
+        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
+            $query->whereHas('outbound', function (Builder $outboundQuery) use ($warehouseId) {
+                $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
+            });
         }
 
         if ($request->filled('vendor_id')) {
@@ -640,6 +686,7 @@ class DashboardController extends Controller
     {
         $vendorId = $this->wrapIdentifier('ID_vendor');
         $tableVendorId = $this->wrapIdentifier('tabel_outbound.ID_vendor');
+        $warehouseId = $this->resolveEffectiveWarehouseId($request);
 
         $vendorQuery = Vendor::query();
 
@@ -659,6 +706,7 @@ class DashboardController extends Controller
         $outboundCounts = Outbound::query()
             ->selectRaw("{$vendorId}, count(*) as total_shipments")
             ->whereIn('ID_vendor', $vendorIds)
+            ->when($warehouseId !== null, fn ($query) => $query->where('ID_gudang_tujuan', $warehouseId))
             ->groupBy('ID_vendor')
             ->get()
             ->pluck('total_shipments', 'ID_vendor');
@@ -669,6 +717,7 @@ class DashboardController extends Controller
             ->join('tabel_outbound', 'tabel_outbound.ID_outbound', '=', 'tabel_outbound_detail.ID_outbound')
             ->whereIn('tabel_outbound.ID_vendor', $vendorIds)
             ->where('tabel_discrepancy.status', '!=', 'match')
+            ->when($warehouseId !== null, fn ($query) => $query->where('tabel_outbound.ID_gudang_tujuan', $warehouseId))
             ->groupBy('tabel_outbound.ID_vendor')
             ->get()
             ->pluck('total_discrepancies', 'vendor_id');
@@ -695,11 +744,24 @@ class DashboardController extends Controller
             ];
         }
 
-        return $performance;
+        return array_values(array_filter($performance, fn (array $row) => $row['total_shipments'] > 0));
     }
 
     protected function wrapIdentifier(string $identifier): string
     {
         return DB::getQueryGrammar()->wrap($identifier);
+    }
+
+    protected function resolveEffectiveWarehouseId(Request $request): ?int
+    {
+        if ($request->filled('ID_gudang')) {
+            return $request->integer('ID_gudang');
+        }
+
+        if ($request->user()->role === 'manager' && $request->user()->ID_gudang) {
+            return (int) $request->user()->ID_gudang;
+        }
+
+        return null;
     }
 }

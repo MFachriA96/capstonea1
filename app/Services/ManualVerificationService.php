@@ -78,12 +78,7 @@ class ManualVerificationService
                 abort(400, 'All inbound details must have manual quantity input before finalizing.');
             }
 
-            $inbound->update([
-                'total_box_sudah_discan' => $inbound->total_box_expected,
-                'status_scan' => 'selesai',
-            ]);
-
-            $this->discrepancyService->generateDiscrepancies($inbound->ID_inbound);
+            app(ReceivingService::class)->finalizeInbound($inbound->ID_inbound);
 
             return $inbound->refresh()->load(['outbound', 'details.barang', 'details.auditPhotos']);
         });

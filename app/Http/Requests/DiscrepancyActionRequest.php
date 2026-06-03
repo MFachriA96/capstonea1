@@ -9,7 +9,7 @@ class DiscrepancyActionRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return in_array($this->user()?->role, ['manager', 'admin'], true);
     }
 
     public function rules(): array

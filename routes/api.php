@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Master\UserController;
 use App\Http\Controllers\Api\Master\VendorController;
 use App\Http\Controllers\Api\NotifikasiController;
 use App\Http\Controllers\Api\OutboundController;
+use App\Http\Controllers\Api\ReceivingController;
 use App\Http\Controllers\Api\ScanSessionController;
 use Illuminate\Support\Facades\Route;
 
@@ -50,18 +51,31 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Inbound
     Route::prefix('inbound')->group(function () {
-        Route::get('/', [InboundController::class, 'index']);
-        Route::post('/scan-qr', [InboundController::class, 'scanQr']); // officer scans QR
-        Route::get('/{id}', [InboundController::class, 'show']);
-        Route::put('/{id}', [InboundController::class, 'update']); // update lokasi_terakhir, nama_penerima
-        Route::get('/{id}/progress', [InboundController::class, 'progress']); // scan progress
-        Route::put('/{id}/manual-verification/{detailId}', [ManualVerificationController::class, 'updateDetail']);
-        Route::post('/{id}/manual-verification/{detailId}/photo', [ManualVerificationController::class, 'uploadPhoto']);
-        Route::post('/{id}/manual-verification/finalize', [ManualVerificationController::class, 'finalize']);
+        Route::middleware('role:vendor,petugas,manager,admin')->group(function () {
+            Route::get('/', [InboundController::class, 'index']);
+            Route::get('/{id}', [InboundController::class, 'show']);
+            Route::get('/{id}/progress', [InboundController::class, 'progress']); // scan progress
+        });
+
+        Route::middleware('role:petugas,manager,admin')->group(function () {
+            Route::post('/scan-qr', [InboundController::class, 'scanQr']); // officer scans QR
+            Route::put('/{id}', [InboundController::class, 'update']); // update lokasi_terakhir, nama_penerima
+            Route::put('/{id}/manual-verification/{detailId}', [ManualVerificationController::class, 'updateDetail']);
+            Route::post('/{id}/manual-verification/{detailId}/photo', [ManualVerificationController::class, 'uploadPhoto']);
+            Route::post('/{id}/manual-verification/finalize', [ManualVerificationController::class, 'finalize']);
+        });
+    });
+
+    Route::middleware('role:petugas,manager,admin')->prefix('receiving')->group(function () {
+        Route::get('/queue', [ReceivingController::class, 'queue']);
+        Route::get('/{outboundId}', [ReceivingController::class, 'show']);
+        Route::post('/scan-box', [ReceivingController::class, 'scanBox']);
+        Route::post('/verify-box', [ReceivingController::class, 'verifyBox']);
+        Route::post('/{inboundId}/finalize', [ReceivingController::class, 'finalize']);
     });
 
     // Scan Session
-    Route::prefix('scan-session')->group(function () {
+    Route::middleware('role:petugas,manager,admin')->prefix('scan-session')->group(function () {
         Route::get('/', [ScanSessionController::class, 'index']);
         Route::post('/', [ScanSessionController::class, 'store']); // start a new scan session
         Route::get('/{id}', [ScanSessionController::class, 'show']);
@@ -72,18 +86,28 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Discrepancy
     Route::prefix('discrepancy')->group(function () {
-        Route::get('/', [DiscrepancyController::class, 'index']);
-        Route::get('/{id}', [DiscrepancyController::class, 'show']);
-        Route::post('/{id}/action', [DiscrepancyActionController::class, 'store']); // officer takes action
-        Route::get('/{id}/actions', [DiscrepancyActionController::class, 'index']); // action history
+        Route::middleware('role:vendor,petugas,manager,admin')->group(function () {
+            Route::get('/', [DiscrepancyController::class, 'index']);
+            Route::get('/{id}', [DiscrepancyController::class, 'show']);
+            Route::get('/{id}/actions', [DiscrepancyActionController::class, 'index']); // action history
+        });
+
+        Route::middleware('role:manager,admin')->group(function () {
+            Route::post('/{id}/action', [DiscrepancyActionController::class, 'store']);
+        });
     });
 
     // R1 Document
     Route::prefix('dokumen-r1')->group(function () {
-        Route::get('/', [DokumenR1Controller::class, 'index']);
-        Route::post('/', [DokumenR1Controller::class, 'store']); // manager/admin only
-        Route::get('/{id}', [DokumenR1Controller::class, 'show']);
-        Route::put('/{id}/status', [DokumenR1Controller::class, 'updateStatus']); // update status_dokumen
+        Route::middleware('role:vendor,manager,admin')->group(function () {
+            Route::get('/', [DokumenR1Controller::class, 'index']);
+            Route::get('/{id}', [DokumenR1Controller::class, 'show']);
+        });
+
+        Route::middleware('role:manager,admin')->group(function () {
+            Route::post('/', [DokumenR1Controller::class, 'store']);
+            Route::put('/{id}/status', [DokumenR1Controller::class, 'updateStatus']); // update status_dokumen
+        });
     });
 
     // Notifications

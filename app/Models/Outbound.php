@@ -13,7 +13,7 @@ class Outbound extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'no_pengiriman', 'ID_vendor', 'waktu_kirim', 'estimasi_tiba',
+        'no_pengiriman', 'ID_vendor', 'ID_gudang_tujuan', 'waktu_kirim', 'estimasi_tiba',
         'lokasi_asal', 'status', 'dibuat_oleh', 'created_at',
     ];
 
@@ -36,6 +36,11 @@ class Outbound extends Model
     public function details()
     {
         return $this->hasMany(OutboundDetail::class, 'ID_outbound', 'ID_outbound');
+    }
+
+    public function targetWarehouse()
+    {
+        return $this->belongsTo(Gudang::class, 'ID_gudang_tujuan', 'ID_gudang');
     }
 
     public function inbound()

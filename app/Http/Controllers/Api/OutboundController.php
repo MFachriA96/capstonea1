@@ -10,7 +10,6 @@ use App\Services\OutboundService;
 use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class OutboundController extends Controller
 {
@@ -39,6 +38,10 @@ class OutboundController extends Controller
 
         if ($request->user()->role === 'vendor') {
             $query->where('ID_vendor', $request->user()->ID_vendor);
+        }
+
+        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
+            $query->where('ID_gudang_tujuan', $warehouseId);
         }
 
         if ($request->filled('status_bucket')) {
@@ -110,36 +113,30 @@ class OutboundController extends Controller
 
     public function getQrToken(Request $request, string $id)
     {
-        $outbound = Outbound::with('details')->findOrFail($id);
+        $outbound = Outbound::with('details.boxes')->findOrFail($id);
 
         if ($request->user()->role === 'vendor' && $outbound->ID_vendor !== $request->user()->ID_vendor) {
             abort(403, 'Unauthorized');
         }
 
-        // Backfill missing QR tokens for previously submitted records so older data
-        // can still be used in the current QR-per-box flow.
         if ($outbound->status !== 'draft') {
-            foreach ($outbound->details as $detail) {
-                if (empty($detail->qr_token)) {
-                    $detail->update([
-                        'qr_token' => Str::uuid()->toString(),
-                    ]);
-                }
-            }
-
-            $outbound->load('details');
+            $outbound = $this->outboundService->ensureBoxesGenerated($outbound);
         }
 
-        $qrTokens = $outbound->details->map(function ($detail) {
-            return [
-                'ID_outbound_detail' => $detail->ID_outbound_detail,
-                'ID_barang' => $detail->ID_barang,
-                'qr_token' => $detail->qr_token,
-            ];
-        });
+        $qrTokens = $outbound->details
+            ->flatMap(fn ($detail) => $detail->boxes)
+            ->values()
+            ->map(fn ($box) => [
+                'ID_outbound_box' => $box->ID_outbound_box,
+                'ID_outbound_detail' => $box->ID_outbound_detail,
+                'box_sequence' => $box->box_sequence,
+                'box_code' => $box->box_code,
+                'expected_qty_in_box' => $box->expected_qty_in_box,
+                'qr_token' => $box->qr_token,
+            ]);
 
         $totalQr = $qrTokens->count();
-        $readyQr = $qrTokens->filter(fn (array $detail) => !empty($detail['qr_token']))->count();
+        $readyQr = $qrTokens->filter(fn (array $box) => !empty($box['qr_token']))->count();
 
         return $this->success([
             'shipment_status' => $outbound->status,
@@ -177,5 +174,18 @@ class OutboundController extends Controller
         }
 
         $query->whereDoesntHave('details.discrepancies', $constraint);
+    }
+
+    protected function resolveEffectiveWarehouseId(Request $request): ?int
+    {
+        if ($request->filled('ID_gudang')) {
+            return $request->integer('ID_gudang');
+        }
+
+        if ($request->user()->role === 'manager' && $request->user()->ID_gudang) {
+            return (int) $request->user()->ID_gudang;
+        }
+
+        return null;
     }
 }
