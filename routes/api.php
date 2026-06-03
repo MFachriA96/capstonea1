@@ -30,7 +30,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::get('/barang/options', [BarangController::class, 'options']);
 
-    Route::middleware('role:admin,manager,petugas')->prefix('master')->group(function () {
+    Route::middleware('role:admin,manager,petugas,vendor')->prefix('master')->group(function () {
         Route::get('gudang', [GudangController::class, 'index']);
     });
 

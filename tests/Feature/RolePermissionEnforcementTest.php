@@ -111,7 +111,7 @@ class RolePermissionEnforcementTest extends TestCase
         $response->assertStatus(403);
     }
 
-    public function test_manager_and_petugas_can_access_warehouse_index_but_vendor_cannot(): void
+    public function test_manager_petugas_and_vendor_can_access_warehouse_index(): void
     {
         $manager = User::create([
             'nama' => 'Manager Gudang',
@@ -153,6 +153,6 @@ class RolePermissionEnforcementTest extends TestCase
 
         $this->actingAs($vendorUser, 'sanctum')
             ->getJson('/api/master/gudang')
-            ->assertStatus(403);
+            ->assertOk();
     }
 }
