@@ -110,4 +110,49 @@ class RolePermissionEnforcementTest extends TestCase
 
         $response->assertStatus(403);
     }
+
+    public function test_manager_and_petugas_can_access_warehouse_index_but_vendor_cannot(): void
+    {
+        $manager = User::create([
+            'nama' => 'Manager Gudang',
+            'email' => 'manager-gudang@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'manager',
+        ]);
+
+        $petugas = User::create([
+            'nama' => 'Petugas Gudang',
+            'email' => 'petugas-gudang@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'petugas',
+        ]);
+
+        $vendor = Vendor::create([
+            'nama_vendor' => 'Vendor Gudang',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '08123456780',
+            'email_vendor' => 'vendor-gudang@example.com',
+            'aktif' => true,
+        ]);
+
+        $vendorUser = User::create([
+            'nama' => 'Vendor User Gudang',
+            'email' => 'vendor-user-gudang@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'vendor',
+            'ID_vendor' => $vendor->ID_vendor,
+        ]);
+
+        $this->actingAs($manager, 'sanctum')
+            ->getJson('/api/master/gudang')
+            ->assertOk();
+
+        $this->actingAs($petugas, 'sanctum')
+            ->getJson('/api/master/gudang')
+            ->assertOk();
+
+        $this->actingAs($vendorUser, 'sanctum')
+            ->getJson('/api/master/gudang')
+            ->assertStatus(403);
+    }
 }

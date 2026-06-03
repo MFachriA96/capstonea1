@@ -30,11 +30,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::get('/barang/options', [BarangController::class, 'options']);
 
+    Route::middleware('role:admin,manager,petugas')->prefix('master')->group(function () {
+        Route::get('gudang', [GudangController::class, 'index']);
+    });
+
     // Master Data (admin only)
     Route::middleware('role:admin')->prefix('master')->group(function () {
         Route::apiResource('barang', BarangController::class);
         Route::apiResource('vendor', VendorController::class);
-        Route::apiResource('gudang', GudangController::class);
+        Route::apiResource('gudang', GudangController::class)->except(['index']);
         Route::get('user', [UserController::class, 'index']);
     });
 

@@ -1263,6 +1263,13 @@ class ManagerVendorDashboardContractTest extends TestCase
         $overrideResponse->assertOk()
             ->assertJsonPath('data.shipment_counts.total', 1)
             ->assertJsonPath('data.recent_shipments.0.ID_outbound', $outboundB->ID_outbound);
+
+        $allResponse = $this
+            ->actingAs($manager, 'sanctum')
+            ->getJson('/api/dashboard/manager-overview?warehouse_scope=all');
+
+        $allResponse->assertOk()
+            ->assertJsonPath('data.shipment_counts.total', 2);
     }
 
     public function test_manager_analytics_uses_default_warehouse_when_no_filter_and_allows_override(): void
