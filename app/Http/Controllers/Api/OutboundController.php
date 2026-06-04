@@ -113,7 +113,7 @@ class OutboundController extends Controller
 
     public function getQrToken(Request $request, string $id)
     {
-        $outbound = Outbound::with('details.boxes')->findOrFail($id);
+        $outbound = Outbound::with('details.boxes', 'details.barang')->findOrFail($id);
 
         if ($request->user()->role === 'vendor' && $outbound->ID_vendor !== $request->user()->ID_vendor) {
             abort(403, 'Unauthorized');
@@ -124,16 +124,17 @@ class OutboundController extends Controller
         }
 
         $qrTokens = $outbound->details
-            ->flatMap(fn ($detail) => $detail->boxes)
-            ->values()
-            ->map(fn ($box) => [
+            ->flatMap(fn ($detail) => $detail->boxes->map(fn ($box) => [
                 'ID_outbound_box' => $box->ID_outbound_box,
                 'ID_outbound_detail' => $box->ID_outbound_detail,
+                'ID_barang' => $detail->ID_barang,
+                'nama_barang' => $detail->barang?->nama_barang,
                 'box_sequence' => $box->box_sequence,
                 'box_code' => $box->box_code,
                 'expected_qty_in_box' => $box->expected_qty_in_box,
                 'qr_token' => $box->qr_token,
-            ]);
+            ]))
+            ->values();
 
         $totalQr = $qrTokens->count();
         $readyQr = $qrTokens->filter(fn (array $box) => !empty($box['qr_token']))->count();
