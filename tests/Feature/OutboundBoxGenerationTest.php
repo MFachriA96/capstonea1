@@ -96,5 +96,8 @@ class OutboundBoxGenerationTest extends TestCase
         $this->assertArrayHasKey('ID_outbound_box', $qrPayload[0]);
         $this->assertArrayHasKey('box_code', $qrPayload[0]);
         $this->assertArrayHasKey('expected_qty_in_box', $qrPayload[0]);
+        $this->assertArrayHasKey('ID_barang', $qrPayload[0]);
+        $this->assertArrayHasKey('nama_barang', $qrPayload[0]);
+        $this->assertSame('Kaleng', $qrPayload[0]['nama_barang']);
     }
 }
