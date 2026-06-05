@@ -108,9 +108,12 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/{id}', [DokumenR1Controller::class, 'show']);
         });
 
+        Route::middleware('role:vendor,manager,admin')->group(function () {
+            Route::put('/{id}/status', [DokumenR1Controller::class, 'updateStatus']); // update status_dokumen
+        });
+
         Route::middleware('role:manager,admin')->group(function () {
             Route::post('/', [DokumenR1Controller::class, 'store']);
-            Route::put('/{id}/status', [DokumenR1Controller::class, 'updateStatus']); // update status_dokumen
         });
     });
 
