@@ -10,6 +10,7 @@ use App\Services\OutboundService;
 use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class OutboundController extends Controller
 {
@@ -64,7 +65,12 @@ class OutboundController extends Controller
             $this->applyHasDiscrepancyFilter($query, $request->query('has_discrepancy'));
         }
 
-        return $this->success(OutboundResource::collection($query->paginate(15))->response()->getData(true));
+        $cacheKey = $this->buildIndexCacheKey($request);
+        $payload = Cache::remember($cacheKey, now()->addSeconds(60), function () use ($query) {
+            return OutboundResource::collection($query->paginate(15))->response()->getData(true);
+        });
+
+        return $this->success($payload);
     }
 
     public function store(OutboundRequest $request)
@@ -204,5 +210,21 @@ class OutboundController extends Controller
         }
 
         return null;
+    }
+
+    protected function buildIndexCacheKey(Request $request): string
+    {
+        return implode(':', [
+            'outbound',
+            'index',
+            $request->user()->role,
+            $request->user()->ID_user,
+            $request->user()->ID_vendor ?? 'none',
+            $request->query('status_bucket', 'all'),
+            $request->query('has_discrepancy', 'all'),
+            $request->query('warehouse_scope', 'default'),
+            $request->query('ID_gudang', 'none'),
+            $request->query('page', 1),
+        ]);
     }
 }

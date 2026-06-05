@@ -14,6 +14,7 @@ use App\Models\Vendor;
 use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -56,50 +57,56 @@ class DashboardController extends Controller
 
     public function summary(Request $request)
     {
-        $today = now()->startOfDay();
-        $roleScope = $this->resolveRoleScope($request);
-        $scopedOutbounds = $this->buildScopedOutboundQuery($request);
-        $scopedInbounds = $this->buildScopedInboundQuery($request);
-        $scopedDiscrepancies = $this->buildScopedDiscrepancyQuery($request);
+        $cacheKey = $this->buildSummaryCacheKey($request);
 
-        $outboundToday = (clone $scopedOutbounds)
-            ->where('created_at', '>=', $today)
-            ->count();
-        $inboundToday = (clone $scopedInbounds)
-            ->where('created_at', '>=', $today)
-            ->count();
-        $discrepancyToday = (clone $scopedDiscrepancies)
-            ->where('detected_at', '>=', $today)
-            ->count();
-        $pendingActions = (clone $scopedDiscrepancies)
-            ->whereHas('actions', fn (Builder $query) => $query->where('status_action', 'pending'))
-            ->count();
-        $shipmentCounts = $this->buildShipmentCounts($request, $scopedOutbounds);
-        $discrepancyCounts = $this->buildDiscrepancyCounts($request, $scopedDiscrepancies);
-        $qrReadiness = $this->buildQrReadiness($request, $scopedOutbounds);
-        $discrepancyStatuses = $discrepancyCounts['by_status'];
+        $payload = Cache::remember($cacheKey, now()->addSeconds(45), function () use ($request) {
+            $today = now()->startOfDay();
+            $roleScope = $this->resolveRoleScope($request);
+            $scopedOutbounds = $this->buildScopedOutboundQuery($request);
+            $scopedInbounds = $this->buildScopedInboundQuery($request);
+            $scopedDiscrepancies = $this->buildScopedDiscrepancyQuery($request);
 
-        return $this->success([
-            'role_scope' => $roleScope,
-            'source_of_truth' => [
-                'shipment_status' => 'tabel_outbound.status',
-                'discrepancy_status' => 'tabel_discrepancy.status',
-                'shipment_discrepancy_count_rule' => 'distinct outbound with at least one discrepancy status != match',
-            ],
-            'shipment_counts' => $shipmentCounts,
-            'discrepancy_counts' => $discrepancyCounts,
-            'qr_readiness' => $qrReadiness,
-            'total_outbound_today' => $outboundToday,
-            'total_inbound_today' => $inboundToday,
-            'total_discrepancy_today' => $discrepancyToday,
-            'pending_actions' => $pendingActions,
-            'discrepancy_by_status' => [
-                'match' => $discrepancyStatuses['match'],
-                'mismatch' => $discrepancyStatuses['mismatch'],
-                'missing' => $discrepancyStatuses['missing'],
-                'over' => $discrepancyStatuses['over'],
-            ],
-        ]);
+            $outboundToday = (clone $scopedOutbounds)
+                ->where('created_at', '>=', $today)
+                ->count();
+            $inboundToday = (clone $scopedInbounds)
+                ->where('created_at', '>=', $today)
+                ->count();
+            $discrepancyToday = (clone $scopedDiscrepancies)
+                ->where('detected_at', '>=', $today)
+                ->count();
+            $pendingActions = (clone $scopedDiscrepancies)
+                ->whereHas('actions', fn (Builder $query) => $query->where('status_action', 'pending'))
+                ->count();
+            $shipmentCounts = $this->buildShipmentCounts($request, $scopedOutbounds);
+            $discrepancyCounts = $this->buildDiscrepancyCounts($request, $scopedDiscrepancies);
+            $qrReadiness = $this->buildQrReadiness($request, $scopedOutbounds);
+            $discrepancyStatuses = $discrepancyCounts['by_status'];
+
+            return [
+                'role_scope' => $roleScope,
+                'source_of_truth' => [
+                    'shipment_status' => 'tabel_outbound.status',
+                    'discrepancy_status' => 'tabel_discrepancy.status',
+                    'shipment_discrepancy_count_rule' => 'distinct outbound with at least one discrepancy status != match',
+                ],
+                'shipment_counts' => $shipmentCounts,
+                'discrepancy_counts' => $discrepancyCounts,
+                'qr_readiness' => $qrReadiness,
+                'total_outbound_today' => $outboundToday,
+                'total_inbound_today' => $inboundToday,
+                'total_discrepancy_today' => $discrepancyToday,
+                'pending_actions' => $pendingActions,
+                'discrepancy_by_status' => [
+                    'match' => $discrepancyStatuses['match'],
+                    'mismatch' => $discrepancyStatuses['mismatch'],
+                    'missing' => $discrepancyStatuses['missing'],
+                    'over' => $discrepancyStatuses['over'],
+                ],
+            ];
+        });
+
+        return $this->success($payload);
     }
 
     public function discrepancyStats(Request $request)
@@ -801,5 +808,19 @@ class DashboardController extends Controller
         }
 
         return null;
+    }
+
+    protected function buildSummaryCacheKey(Request $request): string
+    {
+        return implode(':', [
+            'dashboard',
+            'summary',
+            $request->user()->role,
+            $request->user()->ID_user,
+            $request->user()->ID_vendor ?? 'none',
+            $request->query('warehouse_scope', 'default'),
+            $request->query('ID_gudang', 'none'),
+            $request->query('vendor_id', 'none'),
+        ]);
     }
 }
