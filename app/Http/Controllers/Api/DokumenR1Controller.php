@@ -9,6 +9,7 @@ use App\Models\DokumenR1;
 use App\Services\NotificationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class DokumenR1Controller extends Controller
 {
@@ -24,9 +25,18 @@ class DokumenR1Controller extends Controller
     public function index(Request $request)
     {
         $query = DokumenR1::with([
-            'discrepancy.outboundDetail.barang',
-            'discrepancy.outboundDetail.outbound.vendor',
-            'pembuat',
+            'discrepancy.outboundDetail.barang:ID_barang,nama_barang',
+            'discrepancy.outboundDetail.outbound:ID_outbound,no_pengiriman,lokasi_asal,waktu_kirim,estimasi_tiba,status,ID_vendor',
+            'discrepancy.outboundDetail.outbound.vendor:ID_vendor,nama_vendor',
+            'pembuat:ID_user,nama,email',
+        ])->select([
+            'ID_dokumen',
+            'ID_discrepancy',
+            'no_dokumen_r1',
+            'status_dokumen',
+            'dibuat_oleh',
+            'dibuat_at',
+            'keterangan',
         ]);
 
         if ($request->user()->role === 'vendor') {
@@ -35,7 +45,12 @@ class DokumenR1Controller extends Controller
             });
         }
 
-        return $this->success(DokumenR1Resource::collection($query->orderByDesc('ID_dokumen')->paginate(15))->response()->getData(true));
+        $cacheKey = $this->buildIndexCacheKey($request);
+        $payload = Cache::remember($cacheKey, now()->addSeconds(60), function () use ($query) {
+            return DokumenR1Resource::collection($query->orderByDesc('ID_dokumen')->paginate(15))->response()->getData(true);
+        });
+
+        return $this->success($payload);
     }
 
     public function store(DokumenR1Request $request)
@@ -133,5 +148,17 @@ class DokumenR1Controller extends Controller
             'discrepancy.outboundDetail.outbound.vendor',
             'pembuat',
         ])), 'R1 Document status updated');
+    }
+
+    protected function buildIndexCacheKey(Request $request): string
+    {
+        return implode(':', [
+            'dokumen-r1',
+            'index',
+            $request->user()->role,
+            $request->user()->ID_user,
+            $request->user()->ID_vendor ?? 'none',
+            $request->query('page', 1),
+        ]);
     }
 }

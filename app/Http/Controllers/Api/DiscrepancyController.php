@@ -8,6 +8,7 @@ use App\Models\Discrepancy;
 use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class DiscrepancyController extends Controller
 {
@@ -16,11 +17,22 @@ class DiscrepancyController extends Controller
     public function index(Request $request)
     {
         $query = Discrepancy::with([
-            'outboundDetail.barang',
-            'outboundDetail.outbound.vendor',
+            'outboundDetail.barang:ID_barang,nama_barang',
+            'outboundDetail.outbound:ID_outbound,no_pengiriman,lokasi_asal,waktu_kirim,estimasi_tiba,ID_vendor',
+            'outboundDetail.outbound.vendor:ID_vendor,nama_vendor',
             'inboundDetail',
             'latestAction',
             'dokumenR1',
+        ])->select([
+            'ID_discrepancy',
+            'ID_outbound_detail',
+            'ID_inbound_detail',
+            'quantity_outbound',
+            'quantity_inbound',
+            'selisih',
+            'status',
+            'keterangan',
+            'detected_at',
         ]);
 
         if ($request->has('status')) {
@@ -43,7 +55,12 @@ class DiscrepancyController extends Controller
             });
         }
 
-        return $this->success(DiscrepancyResource::collection($query->paginate(15))->response()->getData(true));
+        $cacheKey = $this->buildIndexCacheKey($request);
+        $payload = Cache::remember($cacheKey, now()->addSeconds(60), function () use ($query) {
+            return DiscrepancyResource::collection($query->paginate(15))->response()->getData(true);
+        });
+
+        return $this->success($payload);
     }
 
     public function show(Request $request, string $id)
@@ -100,5 +117,21 @@ class DiscrepancyController extends Controller
         }
 
         return null;
+    }
+
+    protected function buildIndexCacheKey(Request $request): string
+    {
+        return implode(':', [
+            'discrepancy',
+            'index',
+            $request->user()->role,
+            $request->user()->ID_user,
+            $request->user()->ID_vendor ?? 'none',
+            $request->query('status', 'all'),
+            $request->query('pending_review', 'all'),
+            $request->query('warehouse_scope', 'default'),
+            $request->query('ID_gudang', 'none'),
+            $request->query('page', 1),
+        ]);
     }
 }
