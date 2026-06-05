@@ -24,7 +24,19 @@ class OutboundController extends Controller
 
     public function index(Request $request)
     {
-        $query = Outbound::with(['vendor', 'pembuatOutbound'])
+        $query = Outbound::query()
+            ->select([
+                'ID_outbound',
+                'no_pengiriman',
+                'ID_vendor',
+                'waktu_kirim',
+                'estimasi_tiba',
+                'lokasi_asal',
+                'status',
+                'dibuat_oleh',
+                'created_at',
+            ])
+            ->with(['vendor'])
             ->withCount([
                 'details as total_qr',
                 'details as ready_qr' => fn (Builder $detailQuery) => $detailQuery->whereNotNull('qr_token'),
