@@ -554,22 +554,36 @@ class DashboardController extends Controller
     protected function buildShipmentCounts(Request $request, ?Builder $baseQuery = null): array
     {
         $scopedOutbounds = $baseQuery ? clone $baseQuery : $this->buildScopedOutboundQuery($request);
+        $aggregate = (clone $scopedOutbounds)
+            ->selectRaw("
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as draft,
+                SUM(CASE WHEN status IN ('submitted', 'in_transit') THEN 1 ELSE 0 END) as shipping,
+                SUM(CASE WHEN status IN ('arrived', 'verified') THEN 1 ELSE 0 END) as delivered,
+                SUM(CASE WHEN status = 'verified' THEN 1 ELSE 0 END) as verified,
+                SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) as submitted,
+                SUM(CASE WHEN status = 'in_transit' THEN 1 ELSE 0 END) as in_transit,
+                SUM(CASE WHEN status = 'arrived' THEN 1 ELSE 0 END) as arrived
+            ")
+            ->first();
+
+        $discrepancyCount = (clone $scopedOutbounds)
+            ->whereHas('details.discrepancies', fn (Builder $query) => $query->where('status', '!=', 'match'))
+            ->count();
 
         return [
-            'total' => (clone $scopedOutbounds)->count(),
-            'draft' => (clone $scopedOutbounds)->where('status', 'draft')->count(),
-            'shipping' => (clone $scopedOutbounds)->whereIn('status', ['submitted', 'in_transit'])->count(),
-            'delivered' => (clone $scopedOutbounds)->whereIn('status', ['arrived', 'verified'])->count(),
-            'verified' => (clone $scopedOutbounds)->where('status', 'verified')->count(),
-            'discrepancy' => (clone $scopedOutbounds)
-                ->whereHas('details.discrepancies', fn (Builder $query) => $query->where('status', '!=', 'match'))
-                ->count(),
+            'total' => (int) ($aggregate->total ?? 0),
+            'draft' => (int) ($aggregate->draft ?? 0),
+            'shipping' => (int) ($aggregate->shipping ?? 0),
+            'delivered' => (int) ($aggregate->delivered ?? 0),
+            'verified' => (int) ($aggregate->verified ?? 0),
+            'discrepancy' => (int) $discrepancyCount,
             'status_distribution' => [
-                'draft' => (clone $scopedOutbounds)->where('status', 'draft')->count(),
-                'submitted' => (clone $scopedOutbounds)->where('status', 'submitted')->count(),
-                'in_transit' => (clone $scopedOutbounds)->where('status', 'in_transit')->count(),
-                'arrived' => (clone $scopedOutbounds)->where('status', 'arrived')->count(),
-                'verified' => (clone $scopedOutbounds)->where('status', 'verified')->count(),
+                'draft' => (int) ($aggregate->draft ?? 0),
+                'submitted' => (int) ($aggregate->submitted ?? 0),
+                'in_transit' => (int) ($aggregate->in_transit ?? 0),
+                'arrived' => (int) ($aggregate->arrived ?? 0),
+                'verified' => (int) ($aggregate->verified ?? 0),
             ],
         ];
     }
@@ -581,13 +595,14 @@ class DashboardController extends Controller
             ->select('status', DB::raw('count(*) as total'))
             ->groupBy('status')
             ->pluck('total', 'status');
-
-        $nonMatchDiscrepancies = (clone $scopedDiscrepancies)
-            ->where('status', '!=', 'match');
+        $totalNonMatch = (int) ($discrepancyStatuses['mismatch'] ?? 0)
+            + (int) ($discrepancyStatuses['missing'] ?? 0)
+            + (int) ($discrepancyStatuses['over'] ?? 0);
 
         return [
-            'total_non_match' => (clone $nonMatchDiscrepancies)->count(),
-            'pending_review' => (clone $nonMatchDiscrepancies)
+            'total_non_match' => $totalNonMatch,
+            'pending_review' => (clone $scopedDiscrepancies)
+                ->where('status', '!=', 'match')
                 ->where(function (Builder $query) {
                     $query->whereDoesntHave('actions')
                         ->orWhereHas('actions', fn (Builder $actionQuery) => $actionQuery->where('status_action', 'pending'));
@@ -617,11 +632,18 @@ class DashboardController extends Controller
             ->where('status', '!=', 'draft')
             ->count();
 
+        $qrAggregate = (clone $scopedOutboundDetails)
+            ->selectRaw("
+                COUNT(*) as total_qr,
+                SUM(CASE WHEN qr_token IS NOT NULL THEN 1 ELSE 0 END) as ready_qr
+            ")
+            ->first();
+
         return [
             'shipments_ready' => $readyShipments,
             'shipments_not_ready' => max($nonDraftShipments - $readyShipments, 0),
-            'total_qr' => (clone $scopedOutboundDetails)->count(),
-            'ready_qr' => (clone $scopedOutboundDetails)->whereNotNull('qr_token')->count(),
+            'total_qr' => (int) ($qrAggregate->total_qr ?? 0),
+            'ready_qr' => (int) ($qrAggregate->ready_qr ?? 0),
         ];
     }
 
@@ -642,7 +664,19 @@ class DashboardController extends Controller
 
     protected function buildRecentShipmentsQuery(Request $request): Builder
     {
-        $query = Outbound::with(['vendor', 'pembuatOutbound'])
+        $query = Outbound::query()
+            ->select([
+                'ID_outbound',
+                'no_pengiriman',
+                'ID_vendor',
+                'waktu_kirim',
+                'estimasi_tiba',
+                'lokasi_asal',
+                'status',
+                'dibuat_oleh',
+                'created_at',
+            ])
+            ->with(['vendor'])
             ->withCount([
                 'details as total_qr',
                 'details as ready_qr' => fn (Builder $detailQuery) => $detailQuery->whereNotNull('qr_token'),

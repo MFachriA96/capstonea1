@@ -75,7 +75,7 @@ class DokumenR1Controller extends Controller
     public function updateStatus(Request $request, string $id)
     {
         $request->validate([
-            'status_dokumen' => 'required|in:draft,dikirim_ke_vendor,diproses_vendor,closing',
+            'status_dokumen' => 'required|in:draft,dikirim_ke_vendor,diproses_vendor,barang_dikirim_ulang,closing',
         ]);
 
         $dokumen = DokumenR1::with('discrepancy.outboundDetail.outbound')->findOrFail($id);
@@ -89,8 +89,8 @@ class DokumenR1Controller extends Controller
                 abort(403, 'Unauthorized');
             }
 
-            if ($nextStatus !== 'diproses_vendor') {
-                return $this->error('Vendor can only mark the document as diproses_vendor', 403);
+            if (!in_array($nextStatus, ['diproses_vendor', 'barang_dikirim_ulang'], true)) {
+                return $this->error('Vendor can only mark the document as diproses_vendor or barang_dikirim_ulang', 403);
             }
         }
 
@@ -99,10 +99,10 @@ class DokumenR1Controller extends Controller
         if ($vendorId && in_array($nextStatus, ['dikirim_ke_vendor', 'closing'], true)) {
             $vendors = \App\Models\User::where('role', 'vendor')->where('ID_vendor', $vendorId)->get();
             foreach ($vendors as $vendorUser) {
-                $title = $nextStatus === 'closing' ? 'Dokumen R1 Ditutup' : 'Dokumen R1 Baru';
+                $title = $nextStatus === 'closing' ? 'Dokumen R1 Selesai' : 'Dokumen R1 Baru';
                 $message = $nextStatus === 'closing'
-                    ? 'Dokumen ' . $dokumen->no_dokumen_r1 . ' telah ditutup oleh manager.'
-                    : 'Status R1 dokumen ' . $dokumen->no_dokumen_r1 . ' diperbarui menjadi ' . $nextStatus;
+                    ? 'Dokumen ' . $dokumen->no_dokumen_r1 . ' sudah dinyatakan selesai oleh manager.'
+                    : 'Dokumen ' . $dokumen->no_dokumen_r1 . ' dikirim sebagai instruksi tindak lanjut pengembalian atau pengiriman ulang barang.';
                 $this->notificationService->send(
                     $vendorUser->ID_user,
                     $title,
@@ -113,13 +113,15 @@ class DokumenR1Controller extends Controller
             }
         }
 
-        if ($nextStatus === 'diproses_vendor') {
+        if (in_array($nextStatus, ['diproses_vendor', 'barang_dikirim_ulang'], true)) {
             $managers = \App\Models\User::whereIn('role', ['manager', 'admin'])->get();
             foreach ($managers as $managerUser) {
                 $this->notificationService->send(
                     $managerUser->ID_user,
-                    'Vendor menindaklanjuti dokumen R1',
-                    'Dokumen ' . $dokumen->no_dokumen_r1 . ' sedang diproses oleh vendor.',
+                    $nextStatus === 'barang_dikirim_ulang' ? 'Barang sudah dikirim ulang vendor' : 'Vendor memproses dokumen R1',
+                    $nextStatus === 'barang_dikirim_ulang'
+                        ? 'Vendor menandai bahwa barang untuk dokumen ' . $dokumen->no_dokumen_r1 . ' sudah dikirim ulang.'
+                        : 'Vendor sudah menyetujui dan mulai memproses tindak lanjut untuk dokumen ' . $dokumen->no_dokumen_r1 . '.',
                     'dokumen_r1',
                     $dokumen->ID_dokumen
                 );

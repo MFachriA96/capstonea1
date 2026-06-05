@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Barang;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class BarangController extends Controller
 {
@@ -18,12 +19,12 @@ class BarangController extends Controller
 
     public function options()
     {
-        return $this->success(
-            Barang::query()
-                ->select('ID_barang', 'part_code', 'part_name', 'nama_barang', 'satuan')
-                ->orderBy('nama_barang')
-                ->get()
-        );
+        $cacheKey = 'master:barang:options:v1';
+
+        return $this->success(Cache::remember($cacheKey, now()->addMinutes(10), fn () => Barang::query()
+            ->select('ID_barang', 'part_code', 'part_name', 'nama_barang', 'satuan')
+            ->orderBy('nama_barang')
+            ->get()));
     }
 
     public function store(Request $request)
@@ -38,6 +39,7 @@ class BarangController extends Controller
         ]);
 
         $barang = Barang::create($request->all());
+        Cache::forget('master:barang:options:v1');
         return $this->success($barang, 'Barang created successfully', 201);
     }
 
@@ -60,12 +62,14 @@ class BarangController extends Controller
         ]);
 
         $barang->update($request->all());
+        Cache::forget('master:barang:options:v1');
         return $this->success($barang, 'Barang updated successfully');
     }
 
     public function destroy(string $id)
     {
         Barang::findOrFail($id)->delete();
+        Cache::forget('master:barang:options:v1');
         return $this->success(null, 'Barang deleted successfully');
     }
 }
