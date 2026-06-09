@@ -47,6 +47,14 @@ class AuthService
                 'role' => $user->role,
                 'ID_vendor' => $user->ID_vendor,
                 'ID_gudang' => $user->ID_gudang,
+                'vendor' => $user->vendor ? [
+                    'ID_vendor' => $user->vendor->ID_vendor,
+                    'nama_vendor' => $user->vendor->nama_vendor,
+                    'lokasi_vendor' => $user->vendor->lokasi_vendor,
+                    'kontak' => $user->vendor->kontak,
+                    'email_vendor' => $user->vendor->email_vendor,
+                    'aktif' => $user->vendor->aktif,
+                ] : null,
                 'warehouse' => $user->warehouse ? [
                     'ID_gudang' => $user->warehouse->ID_gudang,
                     'nama_gudang' => $user->warehouse->nama_gudang,

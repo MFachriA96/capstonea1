@@ -21,6 +21,9 @@ class UserResource extends JsonResource
                 return [
                     'ID_vendor' => $this->vendor->ID_vendor,
                     'nama_vendor' => $this->vendor->nama_vendor,
+                    'lokasi_vendor' => $this->vendor->lokasi_vendor,
+                    'kontak' => $this->vendor->kontak,
+                    'email_vendor' => $this->vendor->email_vendor,
                     'aktif' => $this->vendor->aktif,
                 ];
             }),
