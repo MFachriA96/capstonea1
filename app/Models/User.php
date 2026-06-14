@@ -37,7 +37,7 @@ class User extends Authenticatable
         return $this->belongsTo(Vendor::class, 'ID_vendor', 'ID_vendor');
     }
 
-    public function warehouse()
+    public function gudang()
     {
         return $this->belongsTo(Gudang::class, 'ID_gudang', 'ID_gudang');
     }

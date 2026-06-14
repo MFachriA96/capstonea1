@@ -9,7 +9,6 @@ use App\Models\Inbound;
 use App\Services\InboundService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 class InboundController extends Controller
 {
@@ -24,37 +23,21 @@ class InboundController extends Controller
 
     public function index(Request $request)
     {
-        $query = Inbound::query()
-            ->select([
-                'ID_inbound',
-                'ID_outbound',
-                'ID_gudang',
-                'ID_vendor',
-                'timestamp_terima',
-                'nama_penerima',
-                'diterima_oleh',
-                'qr_scan_result',
-                'lokasi_terakhir',
-                'total_box_expected',
-                'total_box_sudah_discan',
-                'status_scan',
-                'created_at',
-            ])
-            ->with([
-                'vendor:ID_vendor,nama_vendor',
-                'penerima:ID_user,nama,email',
-            ]);
+        $query = Inbound::with(['gudang', 'vendor', 'penerima']);
 
         if ($request->user()->role === 'vendor') {
             $query->where('ID_vendor', $request->user()->ID_vendor);
         }
 
-        $cacheKey = $this->buildIndexCacheKey($request);
-        $payload = Cache::remember($cacheKey, now()->addSeconds(60), function () use ($query) {
-            return InboundResource::collection($query->paginate(15))->response()->getData(true);
-        });
+        if ($request->user()->role === 'petugas' && $request->user()->ID_gudang) {
+            $query->where('ID_gudang', $request->user()->ID_gudang);
+        }
 
-        return $this->success($payload);
+        if ($request->filled('ID_gudang')) {
+            $query->where('ID_gudang', $request->integer('ID_gudang'));
+        }
+
+        return $this->success(InboundResource::collection($query->paginate(15))->response()->getData(true));
     }
 
     public function scanQr(InboundRequest $request)
@@ -113,18 +96,6 @@ class InboundController extends Controller
             'total_qr_expected' => $inbound->total_qr_expected,
             'total_qr_sudah_discan' => $inbound->total_qr_sudah_discan,
             'status_scan' => $inbound->status_scan,
-        ]);
-    }
-
-    protected function buildIndexCacheKey(Request $request): string
-    {
-        return implode(':', [
-            'inbound',
-            'index',
-            $request->user()->role,
-            $request->user()->ID_user,
-            $request->user()->ID_vendor ?? 'none',
-            $request->query('page', 1),
         ]);
     }
 }

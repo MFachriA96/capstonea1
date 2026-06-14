@@ -220,10 +220,6 @@ class CriticalFlowFixesTest extends TestCase
             'kode_area' => 'A1',
         ]);
 
-        $officer->update([
-            'ID_gudang' => $gudang->ID_gudang,
-        ]);
-
         $outbound = Outbound::create([
             'no_pengiriman' => 'DO-20260422-0002',
             'ID_vendor' => $vendor->ID_vendor,
@@ -283,10 +279,6 @@ class CriticalFlowFixesTest extends TestCase
             'nama_gudang' => 'Gudang B',
             'lokasi_gudang' => 'Gedung B',
             'kode_area' => 'B1',
-        ]);
-
-        $officer->update([
-            'ID_gudang' => $gudang->ID_gudang,
         ]);
 
         $outbound = Outbound::create([
@@ -378,10 +370,6 @@ class CriticalFlowFixesTest extends TestCase
             'kode_area' => 'C1',
         ]);
 
-        $officer->update([
-            'ID_gudang' => $gudang->ID_gudang,
-        ]);
-
         $outbound = Outbound::create([
             'no_pengiriman' => 'DO-20260422-0004',
             'ID_vendor' => $vendor->ID_vendor,
@@ -439,6 +427,111 @@ class CriticalFlowFixesTest extends TestCase
         $this->assertDatabaseMissing('tabel_cv_result', [
             'ID_foto' => $foto->ID_foto,
         ]);
+    }
+
+    public function test_receiving_queue_hides_shipments_after_all_boxes_are_verified(): void
+    {
+        $vendor = Vendor::create([
+            'nama_vendor' => 'Vendor Queue',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '08123456789',
+            'email_vendor' => 'queue-vendor@example.com',
+            'aktif' => true,
+        ]);
+
+        $gudang = Gudang::create([
+            'nama_gudang' => 'Gudang Queue',
+            'lokasi_gudang' => 'Dock Queue',
+            'kode_area' => 'GQ',
+        ]);
+
+        $officer = User::create([
+            'nama' => 'Officer Queue',
+            'email' => 'officer.queue@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'scanner',
+            'ID_gudang' => $gudang->ID_gudang,
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'P-QUEUE',
+            'part_name' => 'Queue Part',
+            'nama_barang' => 'Queue Part',
+            'satuan' => 'pcs',
+        ]);
+
+        $completedOutbound = Outbound::create([
+            'no_pengiriman' => 'DO-COMPLETE-QUEUE',
+            'ID_vendor' => $vendor->ID_vendor,
+            'ID_gudang_tujuan' => $gudang->ID_gudang,
+            'waktu_kirim' => now(),
+            'estimasi_tiba' => now()->addDay(),
+            'lokasi_asal' => 'Vendor Warehouse',
+            'status' => 'arrived',
+            'dibuat_oleh' => $officer->ID_user,
+        ]);
+
+        $completedOutboundDetail = OutboundDetail::create([
+            'ID_outbound' => $completedOutbound->ID_outbound,
+            'ID_barang' => $barang->ID_barang,
+            'quantity_outbound' => 10,
+            'quantity_per_box' => 10,
+            'jumlah_box' => 1,
+            'qr_token' => 'complete-queue-qr',
+            'sudah_discan' => true,
+            'discan_oleh' => $officer->ID_user,
+        ]);
+
+        $completedInbound = Inbound::create([
+            'ID_outbound' => $completedOutbound->ID_outbound,
+            'ID_gudang' => $gudang->ID_gudang,
+            'ID_vendor' => $vendor->ID_vendor,
+            'timestamp_terima' => now(),
+            'nama_penerima' => 'Officer Queue',
+            'diterima_oleh' => $officer->ID_user,
+            'qr_scan_result' => 'complete-queue-qr',
+            'lokasi_terakhir' => 'Dock',
+            'total_box_expected' => 1,
+            'total_box_sudah_discan' => 0,
+            'total_qr_expected' => 1,
+            'total_qr_sudah_discan' => 1,
+            'status_scan' => 'menunggu',
+        ]);
+
+        InboundDetail::create([
+            'ID_inbound' => $completedInbound->ID_inbound,
+            'ID_barang' => $barang->ID_barang,
+            'ID_outbound_detail' => $completedOutboundDetail->ID_outbound_detail,
+            'quantity_inbound' => 10,
+            'ada_cacat' => false,
+        ]);
+
+        $openOutbound = Outbound::create([
+            'no_pengiriman' => 'DO-OPEN-QUEUE',
+            'ID_vendor' => $vendor->ID_vendor,
+            'ID_gudang_tujuan' => $gudang->ID_gudang,
+            'waktu_kirim' => now(),
+            'estimasi_tiba' => now()->addDay(),
+            'lokasi_asal' => 'Vendor Warehouse',
+            'status' => 'submitted',
+            'dibuat_oleh' => $officer->ID_user,
+        ]);
+
+        OutboundDetail::create([
+            'ID_outbound' => $openOutbound->ID_outbound,
+            'ID_barang' => $barang->ID_barang,
+            'quantity_outbound' => 5,
+            'quantity_per_box' => 5,
+            'jumlah_box' => 1,
+            'qr_token' => 'open-queue-qr',
+            'sudah_discan' => false,
+        ]);
+
+        $response = $this->actingAs($officer, 'sanctum')->getJson('/api/receiving/queue');
+
+        $response->assertOk()
+            ->assertJsonMissing(['no_pengiriman' => 'DO-COMPLETE-QUEUE'])
+            ->assertJsonFragment(['no_pengiriman' => 'DO-OPEN-QUEUE']);
     }
 
     public function test_cv_service_returns_zero_when_api_fails(): void

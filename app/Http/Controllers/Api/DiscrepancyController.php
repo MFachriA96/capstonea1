@@ -8,7 +8,6 @@ use App\Models\Discrepancy;
 use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 class DiscrepancyController extends Controller
 {
@@ -16,24 +15,19 @@ class DiscrepancyController extends Controller
 
     public function index(Request $request)
     {
-        $query = Discrepancy::with([
-            'outboundDetail.barang:ID_barang,nama_barang',
-            'outboundDetail.outbound:ID_outbound,no_pengiriman,lokasi_asal,waktu_kirim,estimasi_tiba,ID_vendor',
-            'outboundDetail.outbound.vendor:ID_vendor,nama_vendor',
+        $relations = [
+            'outboundDetail.barang',
+            'outboundDetail.outbound.vendor',
             'inboundDetail',
             'latestAction',
             'dokumenR1',
-        ])->select([
-            'ID_discrepancy',
-            'ID_outbound_detail',
-            'ID_inbound_detail',
-            'quantity_outbound',
-            'quantity_inbound',
-            'selisih',
-            'status',
-            'keterangan',
-            'detected_at',
-        ]);
+        ];
+
+        if ($request->boolean('include_photos')) {
+            $relations[2] = 'inboundDetail.auditPhotos';
+        }
+
+        $query = Discrepancy::with($relations);
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -49,18 +43,19 @@ class DiscrepancyController extends Controller
             });
         }
 
-        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
-            $query->whereHas('outboundDetail.outbound', function ($q) use ($warehouseId) {
-                $q->where('ID_gudang_tujuan', $warehouseId);
+        if ($request->filled('ID_gudang') && $request->query('warehouse_scope') !== 'all') {
+            $warehouseId = $request->integer('ID_gudang');
+
+            $query->where(function (Builder $warehouseQuery) use ($warehouseId) {
+                $warehouseQuery->whereHas('inboundDetail.inbound', function (Builder $inboundQuery) use ($warehouseId) {
+                    $inboundQuery->where('ID_gudang', $warehouseId);
+                })->orWhereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
+                    $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
+                });
             });
         }
 
-        $cacheKey = $this->buildIndexCacheKey($request);
-        $payload = Cache::remember($cacheKey, now()->addSeconds(60), function () use ($query) {
-            return DiscrepancyResource::collection($query->paginate(15))->response()->getData(true);
-        });
-
-        return $this->success($payload);
+        return $this->success(DiscrepancyResource::collection($query->paginate(15))->response()->getData(true));
     }
 
     public function show(Request $request, string $id)
@@ -100,38 +95,5 @@ class DiscrepancyController extends Controller
         }
 
         $query->whereHas('actions', fn (Builder $actionQuery) => $actionQuery->whereIn('status_action', ['done', 'cancelled']));
-    }
-
-    protected function resolveEffectiveWarehouseId(Request $request): ?int
-    {
-        if ((string) $request->query('warehouse_scope') === 'all') {
-            return null;
-        }
-
-        if ($request->filled('ID_gudang')) {
-            return $request->integer('ID_gudang');
-        }
-
-        if ($request->user()->role === 'manager' && $request->user()->ID_gudang) {
-            return (int) $request->user()->ID_gudang;
-        }
-
-        return null;
-    }
-
-    protected function buildIndexCacheKey(Request $request): string
-    {
-        return implode(':', [
-            'discrepancy',
-            'index',
-            $request->user()->role,
-            $request->user()->ID_user,
-            $request->user()->ID_vendor ?? 'none',
-            $request->query('status', 'all'),
-            $request->query('pending_review', 'all'),
-            $request->query('warehouse_scope', 'default'),
-            $request->query('ID_gudang', 'none'),
-            $request->query('page', 1),
-        ]);
     }
 }

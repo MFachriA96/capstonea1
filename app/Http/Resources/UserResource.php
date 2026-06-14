@@ -21,18 +21,14 @@ class UserResource extends JsonResource
                 return [
                     'ID_vendor' => $this->vendor->ID_vendor,
                     'nama_vendor' => $this->vendor->nama_vendor,
-                    'lokasi_vendor' => $this->vendor->lokasi_vendor,
-                    'kontak' => $this->vendor->kontak,
-                    'email_vendor' => $this->vendor->email_vendor,
                     'aktif' => $this->vendor->aktif,
                 ];
             }),
-            'warehouse' => $this->whenLoaded('warehouse', function () {
+            'warehouse' => $this->whenLoaded('gudang', function () {
                 return [
-                    'ID_gudang' => $this->warehouse->ID_gudang,
-                    'nama_gudang' => $this->warehouse->nama_gudang,
-                    'lokasi_gudang' => $this->warehouse->lokasi_gudang,
-                    'kode_area' => $this->warehouse->kode_area,
+                    'ID_gudang' => $this->gudang->ID_gudang,
+                    'nama_gudang' => $this->gudang->nama_gudang,
+                    'lokasi_gudang' => $this->gudang->lokasi_gudang,
                 ];
             }),
         ];

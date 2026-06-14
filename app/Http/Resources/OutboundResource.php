@@ -13,6 +13,8 @@ class OutboundResource extends JsonResource
             'ID_outbound' => $this->ID_outbound,
             'no_pengiriman' => $this->no_pengiriman,
             'ID_vendor' => $this->ID_vendor,
+            'ID_gudang_tujuan' => $this->ID_gudang_tujuan,
+            'target_warehouse_id' => $this->ID_gudang_tujuan,
             'waktu_kirim' => $this->waktu_kirim,
             'estimasi_tiba' => $this->estimasi_tiba,
             'lokasi_asal' => $this->lokasi_asal,
@@ -30,6 +32,13 @@ class OutboundResource extends JsonResource
                 return [
                     'ID_vendor' => $this->vendor->ID_vendor,
                     'nama_vendor' => $this->vendor->nama_vendor,
+                ];
+            }),
+            'warehouse' => $this->whenLoaded('gudangTujuan', function () {
+                return [
+                    'ID_gudang' => $this->gudangTujuan->ID_gudang,
+                    'nama_gudang' => $this->gudangTujuan->nama_gudang,
+                    'lokasi_gudang' => $this->gudangTujuan->lokasi_gudang,
                 ];
             }),
             'creator' => $this->whenLoaded('pembuatOutbound', function () {

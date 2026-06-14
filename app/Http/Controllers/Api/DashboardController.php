@@ -14,9 +14,7 @@ use App\Models\Vendor;
 use App\Traits\ApiResponse;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
@@ -57,56 +55,50 @@ class DashboardController extends Controller
 
     public function summary(Request $request)
     {
-        $cacheKey = $this->buildSummaryCacheKey($request);
+        $today = now()->startOfDay();
+        $roleScope = $this->resolveRoleScope($request);
+        $scopedOutbounds = $this->buildScopedOutboundQuery($request);
+        $scopedInbounds = $this->buildScopedInboundQuery($request);
+        $scopedDiscrepancies = $this->buildScopedDiscrepancyQuery($request);
 
-        $payload = Cache::remember($cacheKey, now()->addSeconds(45), function () use ($request) {
-            $today = now()->startOfDay();
-            $roleScope = $this->resolveRoleScope($request);
-            $scopedOutbounds = $this->buildScopedOutboundQuery($request);
-            $scopedInbounds = $this->buildScopedInboundQuery($request);
-            $scopedDiscrepancies = $this->buildScopedDiscrepancyQuery($request);
+        $outboundToday = (clone $scopedOutbounds)
+            ->where('created_at', '>=', $today)
+            ->count();
+        $inboundToday = (clone $scopedInbounds)
+            ->where('created_at', '>=', $today)
+            ->count();
+        $discrepancyToday = (clone $scopedDiscrepancies)
+            ->where('detected_at', '>=', $today)
+            ->count();
+        $pendingActions = (clone $scopedDiscrepancies)
+            ->whereHas('actions', fn (Builder $query) => $query->where('status_action', 'pending'))
+            ->count();
+        $shipmentCounts = $this->buildShipmentCounts($request, $scopedOutbounds);
+        $discrepancyCounts = $this->buildDiscrepancyCounts($request, $scopedDiscrepancies);
+        $qrReadiness = $this->buildQrReadiness($request, $scopedOutbounds);
+        $discrepancyStatuses = $discrepancyCounts['by_status'];
 
-            $outboundToday = (clone $scopedOutbounds)
-                ->where('created_at', '>=', $today)
-                ->count();
-            $inboundToday = (clone $scopedInbounds)
-                ->where('created_at', '>=', $today)
-                ->count();
-            $discrepancyToday = (clone $scopedDiscrepancies)
-                ->where('detected_at', '>=', $today)
-                ->count();
-            $pendingActions = (clone $scopedDiscrepancies)
-                ->whereHas('actions', fn (Builder $query) => $query->where('status_action', 'pending'))
-                ->count();
-            $shipmentCounts = $this->buildShipmentCounts($request, $scopedOutbounds);
-            $discrepancyCounts = $this->buildDiscrepancyCounts($request, $scopedDiscrepancies);
-            $qrReadiness = $this->buildQrReadiness($request, $scopedOutbounds);
-            $discrepancyStatuses = $discrepancyCounts['by_status'];
-
-            return [
-                'role_scope' => $roleScope,
-                'source_of_truth' => [
-                    'shipment_status' => 'tabel_outbound.status',
-                    'discrepancy_status' => 'tabel_discrepancy.status',
-                    'shipment_discrepancy_count_rule' => 'distinct outbound with at least one discrepancy status != match',
-                ],
-                'shipment_counts' => $shipmentCounts,
-                'discrepancy_counts' => $discrepancyCounts,
-                'qr_readiness' => $qrReadiness,
-                'total_outbound_today' => $outboundToday,
-                'total_inbound_today' => $inboundToday,
-                'total_discrepancy_today' => $discrepancyToday,
-                'pending_actions' => $pendingActions,
-                'discrepancy_by_status' => [
-                    'match' => $discrepancyStatuses['match'],
-                    'mismatch' => $discrepancyStatuses['mismatch'],
-                    'missing' => $discrepancyStatuses['missing'],
-                    'over' => $discrepancyStatuses['over'],
-                ],
-            ];
-        });
-
-        return $this->success($payload);
+        return $this->success([
+            'role_scope' => $roleScope,
+            'source_of_truth' => [
+                'shipment_status' => 'tabel_outbound.status',
+                'discrepancy_status' => 'tabel_discrepancy.status',
+                'shipment_discrepancy_count_rule' => 'distinct outbound with at least one discrepancy status != match',
+            ],
+            'shipment_counts' => $shipmentCounts,
+            'discrepancy_counts' => $discrepancyCounts,
+            'qr_readiness' => $qrReadiness,
+            'total_outbound_today' => $outboundToday,
+            'total_inbound_today' => $inboundToday,
+            'total_discrepancy_today' => $discrepancyToday,
+            'pending_actions' => $pendingActions,
+            'discrepancy_by_status' => [
+                'match' => $discrepancyStatuses['match'],
+                'mismatch' => $discrepancyStatuses['mismatch'],
+                'missing' => $discrepancyStatuses['missing'],
+                'over' => $discrepancyStatuses['over'],
+            ],
+        ]);
     }
 
     public function discrepancyStats(Request $request)
@@ -131,37 +123,21 @@ class DashboardController extends Controller
             $query->where('status', $request->status);
         }
 
-        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
-            $query->whereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
-                $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
-            });
-        }
-
         return $this->success($query->paginate(15));
     }
 
-    public function pendingActions(Request $request)
+    public function pendingActions()
     {
         $actions = DiscrepancyAction::with(['discrepancy.outboundDetail.barang'])
             ->where('status_action', 'pending')
-            ->when($request->user()->role === 'vendor', function ($query) use ($request) {
-                $query->whereHas('discrepancy.outboundDetail.outbound', function (Builder $outboundQuery) use ($request) {
-                    $outboundQuery->where('ID_vendor', $request->user()->ID_vendor);
-                });
-            })
-            ->when(($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null, function ($query) use ($warehouseId) {
-                $query->whereHas('discrepancy.outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
-                    $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
-                });
-            })
             ->get();
 
         return $this->success($actions);
     }
 
-    public function vendorPerformance(Request $request)
+    public function vendorPerformance()
     {
-        return $this->success($this->buildVendorPerformanceRows($request));
+        return $this->success($this->buildVendorPerformanceRows(request()));
     }
 
     public function managerAnalytics(Request $request)
@@ -199,28 +175,22 @@ class DashboardController extends Controller
 
     protected function buildDiscrepancyByPart(Request $request): array
     {
-        $barangId = $this->wrapIdentifier('b.ID_barang');
-        $warehouseId = $this->resolveEffectiveWarehouseId($request);
-
         $query = DB::table('tabel_discrepancy as d')
             ->join('tabel_outbound_detail as od', 'od.ID_outbound_detail', '=', 'd.ID_outbound_detail')
-            ->join('tabel_outbound as o', 'o.ID_outbound', '=', 'od.ID_outbound')
             ->join('tabel_barang as b', 'b.ID_barang', '=', 'od.ID_barang')
             ->where('d.status', '!=', 'match');
 
         if ($request->user()->role === 'vendor') {
-            $query->where('o.ID_vendor', $request->user()->ID_vendor);
+            $query->join('tabel_outbound as o', 'o.ID_outbound', '=', 'od.ID_outbound')
+                ->where('o.ID_vendor', $request->user()->ID_vendor);
         } elseif ($request->filled('vendor_id')) {
-            $query->where('o.ID_vendor', $request->integer('vendor_id'));
-        }
-
-        if ($warehouseId !== null) {
-            $query->where('o.ID_gudang_tujuan', $warehouseId);
+            $query->join('tabel_outbound as o', 'o.ID_outbound', '=', 'od.ID_outbound')
+                ->where('o.ID_vendor', $request->integer('vendor_id'));
         }
 
         return $query
             ->selectRaw("
-                {$barangId} as part_id,
+                b.\"ID_barang\" as part_id,
                 b.nama_barang as part_name,
                 SUM(CASE WHEN d.status = 'mismatch' THEN 1 ELSE 0 END) as mismatch,
                 SUM(CASE WHEN d.status = 'missing' THEN 1 ELSE 0 END) as missing,
@@ -243,11 +213,6 @@ class DashboardController extends Controller
 
     protected function buildDiscrepancyByVendorAnalytics(Request $request): array
     {
-        $vendorId = $this->wrapIdentifier('ID_vendor');
-        $outboundVendorId = $this->wrapIdentifier('o.ID_vendor');
-        $outboundId = $this->wrapIdentifier('o.ID_outbound');
-        $warehouseId = $this->resolveEffectiveWarehouseId($request);
-
         $vendorQuery = Vendor::query();
 
         if ($request->filled('vendor_id')) {
@@ -262,9 +227,8 @@ class DashboardController extends Controller
         }
 
         $totalByVendor = DB::table('tabel_outbound')
-            ->selectRaw("{$vendorId}, COUNT(*) as total_shipments")
+            ->selectRaw('"ID_vendor", COUNT(*) as total_shipments')
             ->whereIn('ID_vendor', $vendorIds)
-            ->when($warehouseId !== null, fn ($query) => $query->where('ID_gudang_tujuan', $warehouseId))
             ->groupBy('ID_vendor')
             ->get()
             ->keyBy('ID_vendor');
@@ -274,8 +238,7 @@ class DashboardController extends Controller
             ->join('tabel_discrepancy as d', 'd.ID_outbound_detail', '=', 'od.ID_outbound_detail')
             ->where('d.status', '!=', 'match')
             ->whereIn('o.ID_vendor', $vendorIds)
-            ->when($warehouseId !== null, fn ($query) => $query->where('o.ID_gudang_tujuan', $warehouseId))
-            ->selectRaw("{$outboundVendorId}, COUNT(DISTINCT {$outboundId}) as shipments_with_discrepancy")
+            ->selectRaw('o."ID_vendor", COUNT(DISTINCT o."ID_outbound") as shipments_with_discrepancy')
             ->groupBy('o.ID_vendor')
             ->get()
             ->keyBy('ID_vendor');
@@ -291,10 +254,7 @@ class DashboardController extends Controller
                 'shipments_with_discrepancy' => $withDisc,
                 'discrepancy_rate' => $total > 0 ? round($withDisc / $total, 4) : 0.0,
             ];
-        })
-            ->filter(fn (array $row) => $row['total_shipments'] > 0)
-            ->values()
-            ->toArray();
+        })->values()->toArray();
     }
 
     protected function buildScheduleRisk(Request $request): array
@@ -326,21 +286,15 @@ class DashboardController extends Controller
     {
         $scopedOutbounds = $this->buildScopedOutboundQuery($request);
         $scopedDiscrepancies = $this->buildScopedDiscrepancyQuery($request);
-        $submittedQrNotReady = 0;
-
-        // Be tolerant to production environments that have not applied the QR column migration yet.
-        if (Schema::hasColumn('tabel_outbound_detail', 'qr_token')) {
-            $submittedQrNotReady = (clone $scopedOutbounds)
-                ->where('status', '!=', 'draft')
-                ->whereHas('details', fn(Builder $q) => $q->whereNull('qr_token'))
-                ->count();
-        }
 
         return [
             'draft_pending_submit' => (clone $scopedOutbounds)
                 ->where('status', 'draft')
                 ->count(),
-            'submitted_qr_not_ready' => $submittedQrNotReady,
+            'submitted_qr_not_ready' => (clone $scopedOutbounds)
+                ->where('status', '!=', 'draft')
+                ->whereHas('details', fn(Builder $q) => $q->whereNull('qr_token'))
+                ->count(),
             'pending_discrepancy_review' => (clone $scopedDiscrepancies)
                 ->where('status', '!=', 'match')
                 ->where(function (Builder $q) {
@@ -374,10 +328,6 @@ class DashboardController extends Controller
 
     protected function buildTrendByDate(Request $request): array
     {
-        $trendOutboundId = $this->wrapIdentifier('o.ID_outbound');
-        $trendDiscrepancyId = $this->wrapIdentifier('d.ID_discrepancy');
-        $trendActionId = $this->wrapIdentifier('da.ID_action');
-
         $scopedOutbounds = $this->buildScopedOutboundQuery($request);
 
         $outboundRows = (clone $scopedOutbounds)
@@ -416,10 +366,10 @@ class DashboardController extends Controller
             ->leftJoin('tabel_discrepancy_action as da', 'da.ID_discrepancy', '=', 'd.ID_discrepancy')
             ->selectRaw("
                 DATE(o.waktu_kirim) as date,
-                COUNT(DISTINCT {$trendOutboundId}) as shipments_with_discrepancy,
-                COUNT(DISTINCT {$trendDiscrepancyId}) as discrepancy_rows,
+                COUNT(DISTINCT o.\"ID_outbound\") as shipments_with_discrepancy,
+                COUNT(DISTINCT d.\"ID_discrepancy\") as discrepancy_rows,
                 COUNT(DISTINCT CASE
-                    WHEN {$trendActionId} IS NULL OR da.status_action = 'pending' THEN {$trendDiscrepancyId}
+                    WHEN da.\"ID_action\" IS NULL OR da.status_action = 'pending' THEN d.\"ID_discrepancy\"
                     ELSE NULL
                 END) as pending_review
             ")
@@ -458,13 +408,11 @@ class DashboardController extends Controller
             return;
         }
 
-        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
-            $query->where('ID_gudang_tujuan', $warehouseId);
-        }
-
         if ($request->filled('vendor_id')) {
             $query->where('ID_vendor', $request->integer('vendor_id'));
         }
+
+        $this->applyOutboundWarehouseFilter($query, $request);
     }
 
     protected function applyInboundScope(Builder $query, Request $request): void
@@ -475,13 +423,11 @@ class DashboardController extends Controller
             return;
         }
 
-        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
-            $query->where('ID_gudang', $warehouseId);
-        }
-
         if ($request->filled('vendor_id')) {
             $query->where('ID_vendor', $request->integer('vendor_id'));
         }
+
+        $this->applyInboundWarehouseFilter($query, $request);
     }
 
     protected function applyDiscrepancyScope(Builder $query, Request $request): void
@@ -494,17 +440,23 @@ class DashboardController extends Controller
             return;
         }
 
-        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
-            $query->whereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
-                $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
-            });
-        }
-
         if ($request->filled('vendor_id')) {
             $vendorId = $request->integer('vendor_id');
 
             $query->whereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($vendorId) {
                 $outboundQuery->where('ID_vendor', $vendorId);
+            });
+        }
+
+        if ($request->filled('ID_gudang') && $request->query('warehouse_scope') !== 'all') {
+            $warehouseId = $request->integer('ID_gudang');
+
+            $query->where(function (Builder $warehouseQuery) use ($warehouseId) {
+                $warehouseQuery->whereHas('inboundDetail.inbound', function (Builder $inboundQuery) use ($warehouseId) {
+                    $inboundQuery->where('ID_gudang', $warehouseId);
+                })->orWhereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
+                    $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
+                });
             });
         }
     }
@@ -517,12 +469,6 @@ class DashboardController extends Controller
             });
 
             return;
-        }
-
-        if (($warehouseId = $this->resolveEffectiveWarehouseId($request)) !== null) {
-            $query->whereHas('outbound', function (Builder $outboundQuery) use ($warehouseId) {
-                $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
-            });
         }
 
         if ($request->filled('vendor_id')) {
@@ -561,36 +507,22 @@ class DashboardController extends Controller
     protected function buildShipmentCounts(Request $request, ?Builder $baseQuery = null): array
     {
         $scopedOutbounds = $baseQuery ? clone $baseQuery : $this->buildScopedOutboundQuery($request);
-        $aggregate = (clone $scopedOutbounds)
-            ->selectRaw("
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) as draft,
-                SUM(CASE WHEN status IN ('submitted', 'in_transit') THEN 1 ELSE 0 END) as shipping,
-                SUM(CASE WHEN status IN ('arrived', 'verified') THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN status = 'verified' THEN 1 ELSE 0 END) as verified,
-                SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) as submitted,
-                SUM(CASE WHEN status = 'in_transit' THEN 1 ELSE 0 END) as in_transit,
-                SUM(CASE WHEN status = 'arrived' THEN 1 ELSE 0 END) as arrived
-            ")
-            ->first();
-
-        $discrepancyCount = (clone $scopedOutbounds)
-            ->whereHas('details.discrepancies', fn (Builder $query) => $query->where('status', '!=', 'match'))
-            ->count();
 
         return [
-            'total' => (int) ($aggregate->total ?? 0),
-            'draft' => (int) ($aggregate->draft ?? 0),
-            'shipping' => (int) ($aggregate->shipping ?? 0),
-            'delivered' => (int) ($aggregate->delivered ?? 0),
-            'verified' => (int) ($aggregate->verified ?? 0),
-            'discrepancy' => (int) $discrepancyCount,
+            'total' => (clone $scopedOutbounds)->count(),
+            'draft' => (clone $scopedOutbounds)->where('status', 'draft')->count(),
+            'shipping' => (clone $scopedOutbounds)->whereIn('status', ['submitted', 'in_transit'])->count(),
+            'delivered' => (clone $scopedOutbounds)->whereIn('status', ['arrived', 'verified'])->count(),
+            'verified' => (clone $scopedOutbounds)->where('status', 'verified')->count(),
+            'discrepancy' => (clone $scopedOutbounds)
+                ->whereHas('details.discrepancies', fn (Builder $query) => $query->where('status', '!=', 'match'))
+                ->count(),
             'status_distribution' => [
-                'draft' => (int) ($aggregate->draft ?? 0),
-                'submitted' => (int) ($aggregate->submitted ?? 0),
-                'in_transit' => (int) ($aggregate->in_transit ?? 0),
-                'arrived' => (int) ($aggregate->arrived ?? 0),
-                'verified' => (int) ($aggregate->verified ?? 0),
+                'draft' => (clone $scopedOutbounds)->where('status', 'draft')->count(),
+                'submitted' => (clone $scopedOutbounds)->where('status', 'submitted')->count(),
+                'in_transit' => (clone $scopedOutbounds)->where('status', 'in_transit')->count(),
+                'arrived' => (clone $scopedOutbounds)->where('status', 'arrived')->count(),
+                'verified' => (clone $scopedOutbounds)->where('status', 'verified')->count(),
             ],
         ];
     }
@@ -602,14 +534,13 @@ class DashboardController extends Controller
             ->select('status', DB::raw('count(*) as total'))
             ->groupBy('status')
             ->pluck('total', 'status');
-        $totalNonMatch = (int) ($discrepancyStatuses['mismatch'] ?? 0)
-            + (int) ($discrepancyStatuses['missing'] ?? 0)
-            + (int) ($discrepancyStatuses['over'] ?? 0);
+
+        $nonMatchDiscrepancies = (clone $scopedDiscrepancies)
+            ->where('status', '!=', 'match');
 
         return [
-            'total_non_match' => $totalNonMatch,
-            'pending_review' => (clone $scopedDiscrepancies)
-                ->where('status', '!=', 'match')
+            'total_non_match' => (clone $nonMatchDiscrepancies)->count(),
+            'pending_review' => (clone $nonMatchDiscrepancies)
                 ->where(function (Builder $query) {
                     $query->whereDoesntHave('actions')
                         ->orWhereHas('actions', fn (Builder $actionQuery) => $actionQuery->where('status_action', 'pending'));
@@ -639,18 +570,11 @@ class DashboardController extends Controller
             ->where('status', '!=', 'draft')
             ->count();
 
-        $qrAggregate = (clone $scopedOutboundDetails)
-            ->selectRaw("
-                COUNT(*) as total_qr,
-                SUM(CASE WHEN qr_token IS NOT NULL THEN 1 ELSE 0 END) as ready_qr
-            ")
-            ->first();
-
         return [
             'shipments_ready' => $readyShipments,
             'shipments_not_ready' => max($nonDraftShipments - $readyShipments, 0),
-            'total_qr' => (int) ($qrAggregate->total_qr ?? 0),
-            'ready_qr' => (int) ($qrAggregate->ready_qr ?? 0),
+            'total_qr' => (clone $scopedOutboundDetails)->count(),
+            'ready_qr' => (clone $scopedOutboundDetails)->whereNotNull('qr_token')->count(),
         ];
     }
 
@@ -671,19 +595,7 @@ class DashboardController extends Controller
 
     protected function buildRecentShipmentsQuery(Request $request): Builder
     {
-        $query = Outbound::query()
-            ->select([
-                'ID_outbound',
-                'no_pengiriman',
-                'ID_vendor',
-                'waktu_kirim',
-                'estimasi_tiba',
-                'lokasi_asal',
-                'status',
-                'dibuat_oleh',
-                'created_at',
-            ])
-            ->with(['vendor'])
+        $query = Outbound::with(['vendor', 'pembuatOutbound', 'gudangTujuan'])
             ->withCount([
                 'details as total_qr',
                 'details as ready_qr' => fn (Builder $detailQuery) => $detailQuery->whereNotNull('qr_token'),
@@ -702,11 +614,34 @@ class DashboardController extends Controller
         return $query;
     }
 
+    protected function applyOutboundWarehouseFilter(Builder $query, Request $request): void
+    {
+        if ($request->query('warehouse_scope') === 'all') {
+            return;
+        }
+
+        if ($request->filled('ID_gudang')) {
+            $query->where('ID_gudang_tujuan', $request->integer('ID_gudang'));
+        }
+    }
+
+    protected function applyInboundWarehouseFilter(Builder $query, Request $request): void
+    {
+        if ($request->query('warehouse_scope') === 'all') {
+            return;
+        }
+
+        if ($request->filled('ID_gudang')) {
+            $query->where('ID_gudang', $request->integer('ID_gudang'));
+        }
+    }
+
     protected function buildPendingReviewQuery(Request $request): Builder
     {
         $query = Discrepancy::with([
             'outboundDetail.barang',
             'outboundDetail.outbound.vendor',
+            'inboundDetail.auditPhotos',
             'latestAction',
             'dokumenR1',
         ])
@@ -725,10 +660,6 @@ class DashboardController extends Controller
 
     protected function buildVendorPerformanceRows(Request $request): array
     {
-        $vendorId = $this->wrapIdentifier('ID_vendor');
-        $tableVendorId = $this->wrapIdentifier('tabel_outbound.ID_vendor');
-        $warehouseId = $this->resolveEffectiveWarehouseId($request);
-
         $vendorQuery = Vendor::query();
 
         if ($request->user()->role === 'vendor' && $request->user()->ID_vendor) {
@@ -745,20 +676,18 @@ class DashboardController extends Controller
         }
 
         $outboundCounts = Outbound::query()
-            ->selectRaw("{$vendorId}, count(*) as total_shipments")
+            ->selectRaw('"ID_vendor", count(*) as total_shipments')
             ->whereIn('ID_vendor', $vendorIds)
-            ->when($warehouseId !== null, fn ($query) => $query->where('ID_gudang_tujuan', $warehouseId))
             ->groupBy('ID_vendor')
             ->get()
             ->pluck('total_shipments', 'ID_vendor');
 
         $discrepancyCounts = Discrepancy::query()
-            ->selectRaw("{$tableVendorId} as vendor_id, count(*) as total_discrepancies")
+            ->selectRaw('tabel_outbound."ID_vendor" as vendor_id, count(*) as total_discrepancies')
             ->join('tabel_outbound_detail', 'tabel_outbound_detail.ID_outbound_detail', '=', 'tabel_discrepancy.ID_outbound_detail')
             ->join('tabel_outbound', 'tabel_outbound.ID_outbound', '=', 'tabel_outbound_detail.ID_outbound')
             ->whereIn('tabel_outbound.ID_vendor', $vendorIds)
             ->where('tabel_discrepancy.status', '!=', 'match')
-            ->when($warehouseId !== null, fn ($query) => $query->where('tabel_outbound.ID_gudang_tujuan', $warehouseId))
             ->groupBy('tabel_outbound.ID_vendor')
             ->get()
             ->pluck('total_discrepancies', 'vendor_id');
@@ -785,42 +714,6 @@ class DashboardController extends Controller
             ];
         }
 
-        return array_values(array_filter($performance, fn (array $row) => $row['total_shipments'] > 0));
-    }
-
-    protected function wrapIdentifier(string $identifier): string
-    {
-        return DB::getQueryGrammar()->wrap($identifier);
-    }
-
-    protected function resolveEffectiveWarehouseId(Request $request): ?int
-    {
-        if ((string) $request->query('warehouse_scope') === 'all') {
-            return null;
-        }
-
-        if ($request->filled('ID_gudang')) {
-            return $request->integer('ID_gudang');
-        }
-
-        if ($request->user()->role === 'manager' && $request->user()->ID_gudang) {
-            return (int) $request->user()->ID_gudang;
-        }
-
-        return null;
-    }
-
-    protected function buildSummaryCacheKey(Request $request): string
-    {
-        return implode(':', [
-            'dashboard',
-            'summary',
-            $request->user()->role,
-            $request->user()->ID_user,
-            $request->user()->ID_vendor ?? 'none',
-            $request->query('warehouse_scope', 'default'),
-            $request->query('ID_gudang', 'none'),
-            $request->query('vendor_id', 'none'),
-        ]);
+        return $performance;
     }
 }

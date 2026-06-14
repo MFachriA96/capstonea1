@@ -9,7 +9,6 @@ use App\Models\DokumenR1;
 use App\Services\NotificationService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 class DokumenR1Controller extends Controller
 {
@@ -25,18 +24,9 @@ class DokumenR1Controller extends Controller
     public function index(Request $request)
     {
         $query = DokumenR1::with([
-            'discrepancy.outboundDetail.barang:ID_barang,nama_barang',
-            'discrepancy.outboundDetail.outbound:ID_outbound,no_pengiriman,lokasi_asal,waktu_kirim,estimasi_tiba,status,ID_vendor',
-            'discrepancy.outboundDetail.outbound.vendor:ID_vendor,nama_vendor',
-            'pembuat:ID_user,nama,email',
-        ])->select([
-            'ID_dokumen',
-            'ID_discrepancy',
-            'no_dokumen_r1',
-            'status_dokumen',
-            'dibuat_oleh',
-            'dibuat_at',
-            'keterangan',
+            'discrepancy.outboundDetail.barang',
+            'discrepancy.outboundDetail.outbound.vendor',
+            'pembuat',
         ]);
 
         if ($request->user()->role === 'vendor') {
@@ -45,12 +35,7 @@ class DokumenR1Controller extends Controller
             });
         }
 
-        $cacheKey = $this->buildIndexCacheKey($request);
-        $payload = Cache::remember($cacheKey, now()->addSeconds(60), function () use ($query) {
-            return DokumenR1Resource::collection($query->orderByDesc('ID_dokumen')->paginate(15))->response()->getData(true);
-        });
-
-        return $this->success($payload);
+        return $this->success(DokumenR1Resource::collection($query->orderByDesc('ID_dokumen')->paginate(15))->response()->getData(true));
     }
 
     public function store(DokumenR1Request $request)
@@ -94,49 +79,16 @@ class DokumenR1Controller extends Controller
         ]);
 
         $dokumen = DokumenR1::with('discrepancy.outboundDetail.outbound')->findOrFail($id);
-        $user = $request->user();
-        $nextStatus = $request->status_dokumen;
-        $outbound = $dokumen->discrepancy->outboundDetail->outbound;
-        $vendorId = $outbound->ID_vendor;
+        $dokumen->update(['status_dokumen' => $request->status_dokumen]);
 
-        if ($user->role === 'vendor') {
-            if ((int) $user->ID_vendor !== (int) $vendorId) {
-                abort(403, 'Unauthorized');
-            }
-
-            if (!in_array($nextStatus, ['diproses_vendor', 'barang_dikirim_ulang'], true)) {
-                return $this->error('Vendor can only mark the document as diproses_vendor or barang_dikirim_ulang', 403);
-            }
-        }
-
-        $dokumen->update(['status_dokumen' => $nextStatus]);
-
-        if ($vendorId && in_array($nextStatus, ['dikirim_ke_vendor', 'closing'], true)) {
+        $vendorId = $dokumen->discrepancy->outboundDetail->outbound->ID_vendor;
+        if ($vendorId && $request->status_dokumen === 'dikirim_ke_vendor') {
             $vendors = \App\Models\User::where('role', 'vendor')->where('ID_vendor', $vendorId)->get();
             foreach ($vendors as $vendorUser) {
-                $title = $nextStatus === 'closing' ? 'Dokumen R1 Selesai' : 'Dokumen R1 Baru';
-                $message = $nextStatus === 'closing'
-                    ? 'Dokumen ' . $dokumen->no_dokumen_r1 . ' sudah dinyatakan selesai oleh manager.'
-                    : 'Dokumen ' . $dokumen->no_dokumen_r1 . ' dikirim sebagai instruksi tindak lanjut pengembalian atau pengiriman ulang barang.';
                 $this->notificationService->send(
                     $vendorUser->ID_user,
-                    $title,
-                    $message,
-                    'dokumen_r1',
-                    $dokumen->ID_dokumen
-                );
-            }
-        }
-
-        if (in_array($nextStatus, ['diproses_vendor', 'barang_dikirim_ulang'], true)) {
-            $managers = \App\Models\User::whereIn('role', ['manager', 'admin'])->get();
-            foreach ($managers as $managerUser) {
-                $this->notificationService->send(
-                    $managerUser->ID_user,
-                    $nextStatus === 'barang_dikirim_ulang' ? 'Barang sudah dikirim ulang vendor' : 'Vendor memproses dokumen R1',
-                    $nextStatus === 'barang_dikirim_ulang'
-                        ? 'Vendor menandai bahwa barang untuk dokumen ' . $dokumen->no_dokumen_r1 . ' sudah dikirim ulang.'
-                        : 'Vendor sudah menyetujui dan mulai memproses tindak lanjut untuk dokumen ' . $dokumen->no_dokumen_r1 . '.',
+                    'Dokumen R1 Baru',
+                    'Status R1 dokumen ' . $dokumen->no_dokumen_r1 . ' diperbarui menjadi ' . $request->status_dokumen,
                     'dokumen_r1',
                     $dokumen->ID_dokumen
                 );
@@ -148,17 +100,5 @@ class DokumenR1Controller extends Controller
             'discrepancy.outboundDetail.outbound.vendor',
             'pembuat',
         ])), 'R1 Document status updated');
-    }
-
-    protected function buildIndexCacheKey(Request $request): string
-    {
-        return implode(':', [
-            'dokumen-r1',
-            'index',
-            $request->user()->role,
-            $request->user()->ID_user,
-            $request->user()->ID_vendor ?? 'none',
-            $request->query('page', 1),
-        ]);
     }
 }

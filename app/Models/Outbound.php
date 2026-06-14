@@ -33,14 +33,14 @@ class Outbound extends Model
         return $this->belongsTo(User::class, 'dibuat_oleh', 'ID_user');
     }
 
+    public function gudangTujuan()
+    {
+        return $this->belongsTo(Gudang::class, 'ID_gudang_tujuan', 'ID_gudang');
+    }
+
     public function details()
     {
         return $this->hasMany(OutboundDetail::class, 'ID_outbound', 'ID_outbound');
-    }
-
-    public function targetWarehouse()
-    {
-        return $this->belongsTo(Gudang::class, 'ID_gudang_tujuan', 'ID_gudang');
     }
 
     public function inbound()

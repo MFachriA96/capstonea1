@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Gudang;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 class GudangController extends Controller
 {
@@ -14,11 +13,16 @@ class GudangController extends Controller
 
     public function index()
     {
-        $page = request()->integer('page', 1);
-        $version = Cache::get('master:gudang:index:version', 1);
-        $cacheKey = "master:gudang:index:page:{$page}:v{$version}";
+        return $this->success(Gudang::paginate(15));
+    }
 
-        return $this->success(Cache::remember($cacheKey, now()->addMinutes(10), fn () => Gudang::paginate(15)));
+    public function options()
+    {
+        return $this->success(
+            Gudang::query()
+                ->orderBy('nama_gudang')
+                ->get(['ID_gudang', 'nama_gudang', 'lokasi_gudang', 'kode_area'])
+        );
     }
 
     public function store(Request $request)
@@ -30,7 +34,6 @@ class GudangController extends Controller
         ]);
 
         $gudang = Gudang::create($request->all());
-        Cache::increment('master:gudang:index:version');
         return $this->success($gudang, 'Gudang created successfully', 201);
     }
 
@@ -50,14 +53,12 @@ class GudangController extends Controller
         ]);
 
         $gudang->update($request->all());
-        Cache::increment('master:gudang:index:version');
         return $this->success($gudang, 'Gudang updated successfully');
     }
 
     public function destroy(string $id)
     {
         Gudang::findOrFail($id)->delete();
-        Cache::increment('master:gudang:index:version');
         return $this->success(null, 'Gudang deleted successfully');
     }
 }

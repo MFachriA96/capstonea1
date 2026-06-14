@@ -13,7 +13,7 @@ class Foto extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'ID_session', 'ID_inbound', 'ID_outbound_box', 'file_url', 'uploaded_by', 'timestamp', 'related_type',
+        'ID_session', 'ID_inbound', 'file_url', 'uploaded_by', 'timestamp', 'related_type',
     ];
 
     protected $casts = [
@@ -28,11 +28,6 @@ class Foto extends Model
     public function inbound()
     {
         return $this->belongsTo(Inbound::class, 'ID_inbound', 'ID_inbound');
-    }
-
-    public function outboundBox()
-    {
-        return $this->belongsTo(OutboundBox::class, 'ID_outbound_box', 'ID_outbound_box');
     }
 
     public function uploader()

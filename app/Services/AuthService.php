@@ -21,7 +21,7 @@ class AuthService
             'ID_gudang' => $data['ID_gudang'] ?? null,
         ]);
 
-        return $user->load(['vendor', 'warehouse']);
+        return $user;
     }
 
     public function login(string $email, string $password): array
@@ -33,8 +33,6 @@ class AuthService
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
-
-        $user->loadMissing(['vendor', 'warehouse']);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
@@ -50,16 +48,11 @@ class AuthService
                 'vendor' => $user->vendor ? [
                     'ID_vendor' => $user->vendor->ID_vendor,
                     'nama_vendor' => $user->vendor->nama_vendor,
-                    'lokasi_vendor' => $user->vendor->lokasi_vendor,
-                    'kontak' => $user->vendor->kontak,
-                    'email_vendor' => $user->vendor->email_vendor,
-                    'aktif' => $user->vendor->aktif,
                 ] : null,
-                'warehouse' => $user->warehouse ? [
-                    'ID_gudang' => $user->warehouse->ID_gudang,
-                    'nama_gudang' => $user->warehouse->nama_gudang,
-                    'lokasi_gudang' => $user->warehouse->lokasi_gudang,
-                    'kode_area' => $user->warehouse->kode_area,
+                'warehouse' => $user->gudang ? [
+                    'ID_gudang' => $user->gudang->ID_gudang,
+                    'nama_gudang' => $user->gudang->nama_gudang,
+                    'lokasi_gudang' => $user->gudang->lokasi_gudang,
                 ] : null,
             ],
         ];

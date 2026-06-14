@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Barang;
 use App\Models\Outbound;
 use App\Models\OutboundDetail;
-use App\Models\OutboundBox;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,7 +21,7 @@ class OutboundService
             $outbound = Outbound::create([
                 'no_pengiriman' => $noPengiriman,
                 'ID_vendor' => $preparedData['ID_vendor'],
-                'ID_gudang_tujuan' => $preparedData['target_warehouse_id'] ?? null,
+                'ID_gudang_tujuan' => $preparedData['ID_gudang_tujuan'] ?? null,
                 'waktu_kirim' => $preparedData['waktu_kirim'],
                 'estimasi_tiba' => $preparedData['estimasi_tiba'] ?? null,
                 'lokasi_asal' => $preparedData['lokasi_asal'],
@@ -51,7 +50,7 @@ class OutboundService
 
             $outbound->update([
                 'ID_vendor' => $preparedData['ID_vendor'],
-                'ID_gudang_tujuan' => $preparedData['target_warehouse_id'] ?? null,
+                'ID_gudang_tujuan' => $preparedData['ID_gudang_tujuan'] ?? null,
                 'waktu_kirim' => $preparedData['waktu_kirim'],
                 'estimasi_tiba' => $preparedData['estimasi_tiba'] ?? null,
                 'lokasi_asal' => $preparedData['lokasi_asal'],
@@ -87,59 +86,17 @@ class OutboundService
 
             $outbound->update([
                 'status' => 'submitted',
+                'waktu_kirim' => now(),
             ]);
 
-            $this->ensureBoxesGenerated($outbound);
+            foreach ($outbound->details as $detail) {
+                $detail->update([
+                    'qr_token' => Str::uuid()->toString(),
+                ]);
+            }
 
-            return $outbound->fresh('details.boxes');
+            return $outbound;
         });
-    }
-
-    public function ensureBoxesGenerated(Outbound $outbound): Outbound
-    {
-        $outbound->load('details.boxes');
-
-        $needsGeneration = $outbound->details->contains(
-            fn (OutboundDetail $detail) => $detail->boxes->count() !== (int) $detail->jumlah_box
-        );
-
-        if ($needsGeneration) {
-            $this->regenerateBoxes($outbound);
-        }
-
-        return $outbound->fresh('details.boxes');
-    }
-
-    protected function buildBoxPayloads(OutboundDetail $detail): array
-    {
-        $boxes = [];
-        $remaining = (int) $detail->quantity_outbound;
-
-        for ($sequence = 1; $sequence <= (int) $detail->jumlah_box; $sequence++) {
-            $expected = min((int) $detail->quantity_per_box, $remaining);
-            $remaining -= $expected;
-
-            $boxes[] = [
-                'ID_outbound_detail' => $detail->ID_outbound_detail,
-                'box_sequence' => $sequence,
-                'box_code' => sprintf('BOX-%d-%03d', $detail->ID_outbound_detail, $sequence),
-                'expected_qty_in_box' => $expected,
-                'qr_token' => (string) Str::uuid(),
-                'scan_status' => 'pending',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
-        }
-
-        return $boxes;
-    }
-
-    protected function regenerateBoxes(Outbound $outbound): void
-    {
-        foreach ($outbound->details as $detail) {
-            $detail->boxes()->delete();
-            $detail->boxes()->createMany($this->buildBoxPayloads($detail));
-        }
     }
 
     protected function prepareOutboundData(array $data, User $user): array
@@ -147,6 +104,10 @@ class OutboundService
         $data['ID_vendor'] = $user->role === 'vendor'
             ? $user->ID_vendor
             : ($data['ID_vendor'] ?? null);
+
+        $data['ID_gudang_tujuan'] = $data['target_warehouse_id']
+            ?? $data['ID_gudang_tujuan']
+            ?? null;
 
         $data['details'] = array_map(function (array $detail) {
             $detail['ID_barang'] = $this->resolveBarangId($detail);
