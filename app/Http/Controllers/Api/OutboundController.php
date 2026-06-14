@@ -25,7 +25,7 @@ class OutboundController extends Controller
 
     public function index(Request $request)
     {
-        $query = Outbound::with(['vendor', 'pembuatOutbound'])
+        $query = Outbound::with(['vendor', 'pembuatOutbound', 'gudangTujuan'])
             ->withCount([
                 'details as total_qr',
                 'details as ready_qr' => fn (Builder $detailQuery) => $detailQuery->whereNotNull('qr_token'),
@@ -41,6 +41,8 @@ class OutboundController extends Controller
             $query->where('ID_vendor', $request->user()->ID_vendor);
         }
 
+        $this->applyWarehouseScope($query, $request);
+
         if ($request->filled('status_bucket')) {
             $this->applyStatusBucketFilter($query, (string) $request->query('status_bucket'));
         }
@@ -49,18 +51,32 @@ class OutboundController extends Controller
             $this->applyHasDiscrepancyFilter($query, $request->query('has_discrepancy'));
         }
 
+        $query->orderByDesc('created_at')
+            ->orderByDesc('ID_outbound');
+
         return $this->success(OutboundResource::collection($query->paginate(15))->response()->getData(true));
     }
 
     public function store(OutboundRequest $request)
     {
         $outbound = $this->outboundService->createOutbound($request->validated(), $request->user());
+
+        if ($request->boolean('submit_now')) {
+            $outbound = $this->outboundService->submitOutbound($outbound->ID_outbound, $request->user());
+
+            return $this->success(
+                $this->buildOutboundWithQrPayload($request, $outbound),
+                'Outbound created and submitted successfully',
+                201
+            );
+        }
+
         return $this->success(new OutboundResource($outbound), 'Outbound created successfully', 201);
     }
 
     public function show(Request $request, string $id)
     {
-        $outbound = Outbound::with(['vendor', 'pembuatOutbound', 'details.barang'])->findOrFail($id);
+        $outbound = Outbound::with(['vendor', 'pembuatOutbound', 'gudangTujuan', 'details.barang'])->findOrFail($id);
 
         if ($request->user()->role === 'vendor' && $outbound->ID_vendor !== $request->user()->ID_vendor) {
             abort(403, 'Unauthorized');
@@ -105,7 +121,7 @@ class OutboundController extends Controller
     public function submit(Request $request, string $id)
     {
         $outbound = $this->outboundService->submitOutbound($id, $request->user());
-        return $this->success(new OutboundResource($outbound), 'Outbound submitted successfully');
+        return $this->success($this->buildOutboundWithQrPayload($request, $outbound), 'Outbound submitted successfully');
     }
 
     public function getQrToken(Request $request, string $id)
@@ -130,10 +146,28 @@ class OutboundController extends Controller
             $outbound->load('details');
         }
 
+        return $this->success($this->buildQrTokenPayload($outbound));
+    }
+
+    protected function buildOutboundWithQrPayload(Request $request, Outbound $outbound): array
+    {
+        $outbound->loadMissing(['vendor', 'pembuatOutbound', 'gudangTujuan', 'details.barang']);
+
+        return array_merge(
+            (new OutboundResource($outbound))->resolve($request),
+            $this->buildQrTokenPayload($outbound)
+        );
+    }
+
+    protected function buildQrTokenPayload(Outbound $outbound): array
+    {
+        $outbound->loadMissing('details.barang');
+
         $qrTokens = $outbound->details->map(function ($detail) {
             return [
                 'ID_outbound_detail' => $detail->ID_outbound_detail,
                 'ID_barang' => $detail->ID_barang,
+                'nama_barang' => $detail->barang?->nama_barang,
                 'qr_token' => $detail->qr_token,
             ];
         });
@@ -141,13 +175,13 @@ class OutboundController extends Controller
         $totalQr = $qrTokens->count();
         $readyQr = $qrTokens->filter(fn (array $detail) => !empty($detail['qr_token']))->count();
 
-        return $this->success([
+        return [
             'shipment_status' => $outbound->status,
             'qr_ready' => $outbound->status !== 'draft' && $totalQr > 0 && $readyQr === $totalQr,
             'total_qr' => $totalQr,
             'ready_qr' => $readyQr,
             'qr_tokens' => $qrTokens,
-        ]);
+        ];
     }
 
     protected function applyStatusBucketFilter(Builder $query, string $statusBucket): void
@@ -177,5 +211,24 @@ class OutboundController extends Controller
         }
 
         $query->whereDoesntHave('details.discrepancies', $constraint);
+    }
+
+    protected function applyWarehouseScope(Builder $query, Request $request): void
+    {
+        if ($request->query('warehouse_scope') === 'all') {
+            return;
+        }
+
+        if ($request->filled('ID_gudang')) {
+            $query->where('ID_gudang_tujuan', $request->integer('ID_gudang'));
+
+            return;
+        }
+
+        $userWarehouseId = $request->user()->ID_gudang ?? null;
+
+        if ($request->user()->role === 'petugas' && $userWarehouseId) {
+            $query->where('ID_gudang_tujuan', $userWarehouseId);
+        }
     }
 }

@@ -190,7 +190,7 @@ class DashboardController extends Controller
 
         return $query
             ->selectRaw("
-                b.ID_barang as part_id,
+                b.\"ID_barang\" as part_id,
                 b.nama_barang as part_name,
                 SUM(CASE WHEN d.status = 'mismatch' THEN 1 ELSE 0 END) as mismatch,
                 SUM(CASE WHEN d.status = 'missing' THEN 1 ELSE 0 END) as missing,
@@ -227,7 +227,7 @@ class DashboardController extends Controller
         }
 
         $totalByVendor = DB::table('tabel_outbound')
-            ->selectRaw('ID_vendor, COUNT(*) as total_shipments')
+            ->selectRaw('"ID_vendor", COUNT(*) as total_shipments')
             ->whereIn('ID_vendor', $vendorIds)
             ->groupBy('ID_vendor')
             ->get()
@@ -238,7 +238,7 @@ class DashboardController extends Controller
             ->join('tabel_discrepancy as d', 'd.ID_outbound_detail', '=', 'od.ID_outbound_detail')
             ->where('d.status', '!=', 'match')
             ->whereIn('o.ID_vendor', $vendorIds)
-            ->selectRaw('o.ID_vendor, COUNT(DISTINCT o.ID_outbound) as shipments_with_discrepancy')
+            ->selectRaw('o."ID_vendor", COUNT(DISTINCT o."ID_outbound") as shipments_with_discrepancy')
             ->groupBy('o.ID_vendor')
             ->get()
             ->keyBy('ID_vendor');
@@ -366,10 +366,10 @@ class DashboardController extends Controller
             ->leftJoin('tabel_discrepancy_action as da', 'da.ID_discrepancy', '=', 'd.ID_discrepancy')
             ->selectRaw("
                 DATE(o.waktu_kirim) as date,
-                COUNT(DISTINCT o.ID_outbound) as shipments_with_discrepancy,
-                COUNT(DISTINCT d.ID_discrepancy) as discrepancy_rows,
+                COUNT(DISTINCT o.\"ID_outbound\") as shipments_with_discrepancy,
+                COUNT(DISTINCT d.\"ID_discrepancy\") as discrepancy_rows,
                 COUNT(DISTINCT CASE
-                    WHEN da.ID_action IS NULL OR da.status_action = 'pending' THEN d.ID_discrepancy
+                    WHEN da.\"ID_action\" IS NULL OR da.status_action = 'pending' THEN d.\"ID_discrepancy\"
                     ELSE NULL
                 END) as pending_review
             ")
@@ -411,6 +411,8 @@ class DashboardController extends Controller
         if ($request->filled('vendor_id')) {
             $query->where('ID_vendor', $request->integer('vendor_id'));
         }
+
+        $this->applyOutboundWarehouseFilter($query, $request);
     }
 
     protected function applyInboundScope(Builder $query, Request $request): void
@@ -424,6 +426,8 @@ class DashboardController extends Controller
         if ($request->filled('vendor_id')) {
             $query->where('ID_vendor', $request->integer('vendor_id'));
         }
+
+        $this->applyInboundWarehouseFilter($query, $request);
     }
 
     protected function applyDiscrepancyScope(Builder $query, Request $request): void
@@ -441,6 +445,18 @@ class DashboardController extends Controller
 
             $query->whereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($vendorId) {
                 $outboundQuery->where('ID_vendor', $vendorId);
+            });
+        }
+
+        if ($request->filled('ID_gudang') && $request->query('warehouse_scope') !== 'all') {
+            $warehouseId = $request->integer('ID_gudang');
+
+            $query->where(function (Builder $warehouseQuery) use ($warehouseId) {
+                $warehouseQuery->whereHas('inboundDetail.inbound', function (Builder $inboundQuery) use ($warehouseId) {
+                    $inboundQuery->where('ID_gudang', $warehouseId);
+                })->orWhereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
+                    $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
+                });
             });
         }
     }
@@ -579,7 +595,7 @@ class DashboardController extends Controller
 
     protected function buildRecentShipmentsQuery(Request $request): Builder
     {
-        $query = Outbound::with(['vendor', 'pembuatOutbound'])
+        $query = Outbound::with(['vendor', 'pembuatOutbound', 'gudangTujuan'])
             ->withCount([
                 'details as total_qr',
                 'details as ready_qr' => fn (Builder $detailQuery) => $detailQuery->whereNotNull('qr_token'),
@@ -598,11 +614,34 @@ class DashboardController extends Controller
         return $query;
     }
 
+    protected function applyOutboundWarehouseFilter(Builder $query, Request $request): void
+    {
+        if ($request->query('warehouse_scope') === 'all') {
+            return;
+        }
+
+        if ($request->filled('ID_gudang')) {
+            $query->where('ID_gudang_tujuan', $request->integer('ID_gudang'));
+        }
+    }
+
+    protected function applyInboundWarehouseFilter(Builder $query, Request $request): void
+    {
+        if ($request->query('warehouse_scope') === 'all') {
+            return;
+        }
+
+        if ($request->filled('ID_gudang')) {
+            $query->where('ID_gudang', $request->integer('ID_gudang'));
+        }
+    }
+
     protected function buildPendingReviewQuery(Request $request): Builder
     {
         $query = Discrepancy::with([
             'outboundDetail.barang',
             'outboundDetail.outbound.vendor',
+            'inboundDetail.auditPhotos',
             'latestAction',
             'dokumenR1',
         ])
@@ -637,14 +676,14 @@ class DashboardController extends Controller
         }
 
         $outboundCounts = Outbound::query()
-            ->selectRaw('ID_vendor, count(*) as total_shipments')
+            ->selectRaw('"ID_vendor", count(*) as total_shipments')
             ->whereIn('ID_vendor', $vendorIds)
             ->groupBy('ID_vendor')
             ->get()
             ->pluck('total_shipments', 'ID_vendor');
 
         $discrepancyCounts = Discrepancy::query()
-            ->selectRaw('tabel_outbound.ID_vendor as vendor_id, count(*) as total_discrepancies')
+            ->selectRaw('tabel_outbound."ID_vendor" as vendor_id, count(*) as total_discrepancies')
             ->join('tabel_outbound_detail', 'tabel_outbound_detail.ID_outbound_detail', '=', 'tabel_discrepancy.ID_outbound_detail')
             ->join('tabel_outbound', 'tabel_outbound.ID_outbound', '=', 'tabel_outbound_detail.ID_outbound')
             ->whereIn('tabel_outbound.ID_vendor', $vendorIds)

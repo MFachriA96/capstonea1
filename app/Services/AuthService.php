@@ -18,6 +18,7 @@ class AuthService
             'password_hash' => $data['password_hash'],
             'role' => $data['role'],
             'ID_vendor' => $data['ID_vendor'] ?? null,
+            'ID_gudang' => $data['ID_gudang'] ?? null,
         ]);
 
         return $user;
@@ -43,6 +44,16 @@ class AuthService
                 'email' => $user->email,
                 'role' => $user->role,
                 'ID_vendor' => $user->ID_vendor,
+                'ID_gudang' => $user->ID_gudang,
+                'vendor' => $user->vendor ? [
+                    'ID_vendor' => $user->vendor->ID_vendor,
+                    'nama_vendor' => $user->vendor->nama_vendor,
+                ] : null,
+                'warehouse' => $user->gudang ? [
+                    'ID_gudang' => $user->gudang->ID_gudang,
+                    'nama_gudang' => $user->gudang->nama_gudang,
+                    'lokasi_gudang' => $user->gudang->lokasi_gudang,
+                ] : null,
             ],
         ];
     }

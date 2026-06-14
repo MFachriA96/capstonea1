@@ -29,6 +29,14 @@ class InboundController extends Controller
             $query->where('ID_vendor', $request->user()->ID_vendor);
         }
 
+        if ($request->user()->role === 'petugas' && $request->user()->ID_gudang) {
+            $query->where('ID_gudang', $request->user()->ID_gudang);
+        }
+
+        if ($request->filled('ID_gudang')) {
+            $query->where('ID_gudang', $request->integer('ID_gudang'));
+        }
+
         return $this->success(InboundResource::collection($query->paginate(15))->response()->getData(true));
     }
 

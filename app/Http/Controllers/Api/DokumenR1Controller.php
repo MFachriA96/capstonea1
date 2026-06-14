@@ -75,7 +75,7 @@ class DokumenR1Controller extends Controller
     public function updateStatus(Request $request, string $id)
     {
         $request->validate([
-            'status_dokumen' => 'required|in:draft,dikirim_ke_vendor,diproses_vendor,closing',
+            'status_dokumen' => 'required|in:draft,dikirim_ke_vendor,diproses_vendor,barang_dikirim_ulang,closing',
         ]);
 
         $dokumen = DokumenR1::with('discrepancy.outboundDetail.outbound')->findOrFail($id);

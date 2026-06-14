@@ -37,6 +37,11 @@ class OutboundDetail extends Model
         return $this->hasMany(Discrepancy::class, 'ID_outbound_detail', 'ID_outbound_detail');
     }
 
+    public function inboundDetails()
+    {
+        return $this->hasMany(InboundDetail::class, 'ID_outbound_detail', 'ID_outbound_detail');
+    }
+
     public function scanner()
     {
         return $this->belongsTo(User::class, 'discan_oleh', 'ID_user');

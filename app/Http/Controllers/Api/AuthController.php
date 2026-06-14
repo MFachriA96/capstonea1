@@ -53,6 +53,9 @@ class AuthController extends Controller
         if ($user->ID_vendor) {
             $user->load('vendor');
         }
+        if ($user->ID_gudang) {
+            $user->load('gudang');
+        }
 
         return $this->success(new UserResource($user), 'User data retrieved successfully');
     }

@@ -16,6 +16,15 @@ class GudangController extends Controller
         return $this->success(Gudang::paginate(15));
     }
 
+    public function options()
+    {
+        return $this->success(
+            Gudang::query()
+                ->orderBy('nama_gudang')
+                ->get(['ID_gudang', 'nama_gudang', 'lokasi_gudang', 'kode_area'])
+        );
+    }
+
     public function store(Request $request)
     {
         $request->validate([

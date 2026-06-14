@@ -16,6 +16,8 @@ class OutboundRequest extends FormRequest
     {
         return [
             'ID_vendor' => ['nullable', 'integer', 'exists:tabel_vendor,ID_vendor'],
+            'target_warehouse_id' => ['nullable', 'integer', 'exists:tabel_gudang,ID_gudang'],
+            'ID_gudang_tujuan' => ['nullable', 'integer', 'exists:tabel_gudang,ID_gudang'],
             'waktu_kirim' => ['required', 'date'],
             'estimasi_tiba' => ['required', 'date', 'after_or_equal:waktu_kirim'],
             'lokasi_asal' => ['required', 'string', 'max:200'],

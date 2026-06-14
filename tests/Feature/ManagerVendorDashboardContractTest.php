@@ -12,6 +12,7 @@ use App\Models\Outbound;
 use App\Models\OutboundDetail;
 use App\Models\User;
 use App\Models\Vendor;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -74,6 +75,60 @@ class ManagerVendorDashboardContractTest extends TestCase
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['estimasi_tiba']);
+    }
+
+    public function test_outbound_submit_uses_actual_submission_time_for_dispatch_time(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-14 08:45:30'));
+
+        $vendor = Vendor::create([
+            'nama_vendor' => 'Vendor Submit Time',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '08123456789',
+            'email_vendor' => 'submit-time@example.com',
+            'aktif' => true,
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'P-SUBMIT-TIME',
+            'part_name' => 'Submit Time Part',
+            'nama_barang' => 'Submit Time Part',
+            'satuan' => 'pcs',
+        ]);
+
+        $vendorUser = User::create([
+            'nama' => 'Vendor Submit Time',
+            'email' => 'vendor-submit-time@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'vendor',
+            'ID_vendor' => $vendor->ID_vendor,
+        ]);
+
+        $payload = [
+            'waktu_kirim' => '2026-06-14 00:00:00',
+            'estimasi_tiba' => '2026-06-15 00:00:00',
+            'lokasi_asal' => 'Warehouse A',
+            'submit_now' => true,
+            'details' => [[
+                'ID_barang' => $barang->ID_barang,
+                'quantity_outbound' => 10,
+                'quantity_per_box' => 5,
+                'jumlah_box' => 2,
+            ]],
+        ];
+
+        $response = $this
+            ->actingAs($vendorUser, 'sanctum')
+            ->postJson('/api/outbound', $payload);
+
+        $response->assertCreated();
+
+        $outbound = Outbound::where('no_pengiriman', $response->json('data.no_pengiriman'))->firstOrFail();
+
+        $this->assertSame('submitted', $outbound->status);
+        $this->assertSame('2026-06-14 08:45:30', $outbound->waktu_kirim->format('Y-m-d H:i:s'));
+
+        Carbon::setTestNow();
     }
 
     public function test_vendor_dashboard_summary_is_scoped_and_uses_canonical_counts(): void
@@ -343,6 +398,58 @@ class ManagerVendorDashboardContractTest extends TestCase
         $cleanDeliveredResponse->assertOk()
             ->assertJsonCount(1, 'data.data')
             ->assertJsonPath('data.data.0.ID_outbound', $deliveredClean->ID_outbound);
+    }
+
+    public function test_outbound_index_returns_newest_shipments_first_for_vendor_dashboard(): void
+    {
+        $vendor = Vendor::create([
+            'nama_vendor' => 'Vendor Latest',
+            'lokasi_vendor' => 'Bekasi',
+            'kontak' => '08123456789',
+            'email_vendor' => 'vendor-latest@example.com',
+            'aktif' => true,
+        ]);
+
+        $vendorUser = User::create([
+            'nama' => 'Vendor Latest User',
+            'email' => 'vendor-latest-user@example.com',
+            'password_hash' => bcrypt('password123'),
+            'role' => 'vendor',
+            'ID_vendor' => $vendor->ID_vendor,
+        ]);
+
+        $barang = Barang::create([
+            'part_code' => 'P-LATEST',
+            'part_name' => 'Latest Part',
+            'nama_barang' => 'Latest Part',
+            'satuan' => 'pcs',
+        ]);
+
+        for ($index = 0; $index < 16; $index++) {
+            $outbound = $this->createOutboundWithDetail(
+                $vendor->ID_vendor,
+                $vendorUser->ID_user,
+                $barang->ID_barang,
+                'draft',
+            );
+
+            $outbound->update(['created_at' => now()->subDays(20 - $index)]);
+        }
+
+        $latestOutbound = $this->createOutboundWithDetail(
+            $vendor->ID_vendor,
+            $vendorUser->ID_user,
+            $barang->ID_barang,
+            'draft',
+        );
+        $latestOutbound->update(['created_at' => now()]);
+
+        $response = $this
+            ->actingAs($vendorUser, 'sanctum')
+            ->getJson('/api/outbound');
+
+        $response->assertOk()
+            ->assertJsonPath('data.data.0.ID_outbound', $latestOutbound->ID_outbound);
     }
 
     public function test_discrepancy_index_supports_pending_review_filter_for_dashboard_queue(): void

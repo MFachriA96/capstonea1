@@ -23,7 +23,7 @@ class User extends Authenticatable
     protected $authPasswordName = 'password_hash';
 
     protected $fillable = [
-        'nama', 'email', 'password_hash', 'role', 'ID_vendor', 'created_at',
+        'nama', 'email', 'password_hash', 'role', 'ID_vendor', 'ID_gudang', 'created_at',
     ];
 
     protected $hidden = ['password_hash'];
@@ -35,6 +35,11 @@ class User extends Authenticatable
     public function vendor()
     {
         return $this->belongsTo(Vendor::class, 'ID_vendor', 'ID_vendor');
+    }
+
+    public function gudang()
+    {
+        return $this->belongsTo(Gudang::class, 'ID_gudang', 'ID_gudang');
     }
 
     public function outbounds()

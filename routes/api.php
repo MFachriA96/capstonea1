@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Master\UserController;
 use App\Http\Controllers\Api\Master\VendorController;
 use App\Http\Controllers\Api\NotifikasiController;
 use App\Http\Controllers\Api\OutboundController;
+use App\Http\Controllers\Api\ReceivingController;
 use App\Http\Controllers\Api\ScanSessionController;
 use Illuminate\Support\Facades\Route;
 
@@ -28,6 +29,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::get('/barang/options', [BarangController::class, 'options']);
+    Route::get('/gudang/options', [GudangController::class, 'options']);
+    Route::get('/master/gudang', [GudangController::class, 'index']);
 
     // Master Data (admin only)
     Route::middleware('role:admin')->prefix('master')->group(function () {
@@ -58,6 +61,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}/manual-verification/{detailId}', [ManualVerificationController::class, 'updateDetail']);
         Route::post('/{id}/manual-verification/{detailId}/photo', [ManualVerificationController::class, 'uploadPhoto']);
         Route::post('/{id}/manual-verification/finalize', [ManualVerificationController::class, 'finalize']);
+    });
+
+    Route::prefix('receiving')->group(function () {
+        Route::get('/queue', [ReceivingController::class, 'queue']);
+        Route::post('/scan-box', [ReceivingController::class, 'scanBox']);
+        Route::post('/verify-box', [ReceivingController::class, 'verifyBox']);
+        Route::post('/upload-photo', [ReceivingController::class, 'uploadBoxPhoto']);
+        Route::get('/{outboundId}', [ReceivingController::class, 'show']);
+        Route::post('/{inboundId}/finalize', [ReceivingController::class, 'finalize']);
     });
 
     // Scan Session

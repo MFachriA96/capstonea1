@@ -15,13 +15,19 @@ class DiscrepancyController extends Controller
 
     public function index(Request $request)
     {
-        $query = Discrepancy::with([
+        $relations = [
             'outboundDetail.barang',
             'outboundDetail.outbound.vendor',
             'inboundDetail',
             'latestAction',
             'dokumenR1',
-        ]);
+        ];
+
+        if ($request->boolean('include_photos')) {
+            $relations[2] = 'inboundDetail.auditPhotos';
+        }
+
+        $query = Discrepancy::with($relations);
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -34,6 +40,18 @@ class DiscrepancyController extends Controller
         if ($request->user()->role === 'vendor') {
             $query->whereHas('outboundDetail.outbound', function ($q) use ($request) {
                 $q->where('ID_vendor', $request->user()->ID_vendor);
+            });
+        }
+
+        if ($request->filled('ID_gudang') && $request->query('warehouse_scope') !== 'all') {
+            $warehouseId = $request->integer('ID_gudang');
+
+            $query->where(function (Builder $warehouseQuery) use ($warehouseId) {
+                $warehouseQuery->whereHas('inboundDetail.inbound', function (Builder $inboundQuery) use ($warehouseId) {
+                    $inboundQuery->where('ID_gudang', $warehouseId);
+                })->orWhereHas('outboundDetail.outbound', function (Builder $outboundQuery) use ($warehouseId) {
+                    $outboundQuery->where('ID_gudang_tujuan', $warehouseId);
+                });
             });
         }
 

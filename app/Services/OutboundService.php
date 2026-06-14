@@ -21,6 +21,7 @@ class OutboundService
             $outbound = Outbound::create([
                 'no_pengiriman' => $noPengiriman,
                 'ID_vendor' => $preparedData['ID_vendor'],
+                'ID_gudang_tujuan' => $preparedData['ID_gudang_tujuan'] ?? null,
                 'waktu_kirim' => $preparedData['waktu_kirim'],
                 'estimasi_tiba' => $preparedData['estimasi_tiba'] ?? null,
                 'lokasi_asal' => $preparedData['lokasi_asal'],
@@ -49,6 +50,7 @@ class OutboundService
 
             $outbound->update([
                 'ID_vendor' => $preparedData['ID_vendor'],
+                'ID_gudang_tujuan' => $preparedData['ID_gudang_tujuan'] ?? null,
                 'waktu_kirim' => $preparedData['waktu_kirim'],
                 'estimasi_tiba' => $preparedData['estimasi_tiba'] ?? null,
                 'lokasi_asal' => $preparedData['lokasi_asal'],
@@ -84,6 +86,7 @@ class OutboundService
 
             $outbound->update([
                 'status' => 'submitted',
+                'waktu_kirim' => now(),
             ]);
 
             foreach ($outbound->details as $detail) {
@@ -101,6 +104,10 @@ class OutboundService
         $data['ID_vendor'] = $user->role === 'vendor'
             ? $user->ID_vendor
             : ($data['ID_vendor'] ?? null);
+
+        $data['ID_gudang_tujuan'] = $data['target_warehouse_id']
+            ?? $data['ID_gudang_tujuan']
+            ?? null;
 
         $data['details'] = array_map(function (array $detail) {
             $detail['ID_barang'] = $this->resolveBarangId($detail);
