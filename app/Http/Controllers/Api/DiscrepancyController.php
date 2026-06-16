@@ -55,6 +55,9 @@ class DiscrepancyController extends Controller
             });
         }
 
+        $query->orderByDesc('detected_at')
+            ->orderByDesc('ID_discrepancy');
+
         return $this->success(DiscrepancyResource::collection($query->paginate(15))->response()->getData(true));
     }
 
